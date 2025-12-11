@@ -10,8 +10,10 @@
 
 import type * as _testInsertFakeFile from "../_testInsertFakeFile.js";
 import type * as allocateFolderSegment from "../allocateFolderSegment.js";
+import type * as assetFsHttp from "../assetFsHttp.js";
 import type * as assetManager from "../assetManager.js";
 import type * as authAdapter from "../authAdapter.js";
+import type * as helpers_parseVersionIdFromPath from "../helpers/parseVersionIdFromPath.js";
 import type * as slugify from "../slugify.js";
 
 import type {
@@ -24,8 +26,10 @@ import { anyApi, componentsGeneric } from "convex/server";
 const fullApi: ApiFromModules<{
   _testInsertFakeFile: typeof _testInsertFakeFile;
   allocateFolderSegment: typeof allocateFolderSegment;
+  assetFsHttp: typeof assetFsHttp;
   assetManager: typeof assetManager;
   authAdapter: typeof authAdapter;
+  "helpers/parseVersionIdFromPath": typeof helpers_parseVersionIdFromPath;
   slugify: typeof slugify;
 }> = anyApi as any;
 

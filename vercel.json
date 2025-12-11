@@ -1,0 +1,20 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/cdn/:versionId/:filename",
+      "destination": "https://giant-dodo-784.convex.site/am/file/v/:versionId/:filename"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/cdn/:path*",
+      "headers": [
+        {
+          "key": "CDN-Cache-Control",
+          "value": "max-age=31536000"
+        }
+      ]
+    }
+  ]
+}
