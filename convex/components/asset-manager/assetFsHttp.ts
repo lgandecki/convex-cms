@@ -1,8 +1,27 @@
 // convex/assetFsHttp.ts
-import { internalAction, internalQuery, query } from "./_generated/server";
+import { action, internalAction, internalQuery, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
+
+/**
+ * Internal action that fetches a blob from component storage.
+ * This is needed because HTTP actions in the main app cannot access
+ * component storage directly - they can only access main app storage.
+ * By using an action inside the component, we can access component storage
+ * and return the blob data to the HTTP action.
+ */
+export const getBlobForServing = action({
+  args: {
+    storageId: v.id("_storage"),
+  },
+  returns: v.union(v.null(), v.bytes()),
+  handler: async (ctx, { storageId }): Promise<ArrayBuffer | null> => {
+    const blob = await ctx.storage.get(storageId);
+    if (!blob) return null;
+    return await blob.arrayBuffer();
+  },
+});
 
 const SMALL_FILE_LIMIT = 20 * 1024 * 1024; // 20MB
 

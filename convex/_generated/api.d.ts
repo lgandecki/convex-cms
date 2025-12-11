@@ -57,6 +57,12 @@ export declare const internal: FilterApi<
 export declare const components: {
   assetManager: {
     assetFsHttp: {
+      getBlobForServing: FunctionReference<
+        "action",
+        "internal",
+        { storageId: string },
+        null | ArrayBuffer
+      >;
       getVersionForServing: FunctionReference<
         "query",
         "internal",
