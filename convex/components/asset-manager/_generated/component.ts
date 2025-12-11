@@ -173,6 +173,19 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
+      listAssetEvents: FunctionReference<
+        "query",
+        "internal",
+        { basename: string; folderPath: string },
+        Array<{
+          createdAt: number;
+          createdBy?: string;
+          fromFolderPath?: string;
+          toFolderPath?: string;
+          type: string;
+        }>,
+        Name
+      >;
       listAssets: FunctionReference<
         "query",
         "internal",
@@ -208,6 +221,23 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         }>,
         Name
       >;
+      listPublishedAssetsInFolder: FunctionReference<
+        "query",
+        "internal",
+        { folderPath: string },
+        Array<{
+          basename: string;
+          createdAt: number;
+          createdBy?: string;
+          extra?: any;
+          folderPath: string;
+          label?: string;
+          publishedAt?: number;
+          publishedBy?: string;
+          version: number;
+        }>,
+        Name
+      >;
       listPublishedFilesInFolder: FunctionReference<
         "query",
         "internal",
@@ -221,6 +251,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           url: string;
           version: number;
         }>,
+        Name
+      >;
+      moveAsset: FunctionReference<
+        "mutation",
+        "internal",
+        { basename: string; fromFolderPath: string; toFolderPath: string },
+        { assetId: string; fromFolderPath: string; toFolderPath: string },
         Name
       >;
       publishDraft: FunctionReference<

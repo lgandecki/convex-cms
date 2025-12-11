@@ -50,6 +50,14 @@ const schema = defineSchema({
   })
     .index("by_asset", ["assetId"])
     .index("by_asset_version", ["assetId", "version"]),
+  assetEvents: defineTable({
+    assetId: v.id("assets"),
+    type: v.string(),
+    fromFolderPath: v.optional(v.string()),
+    toFolderPath: v.optional(v.string()),
+    createdAt: v.number(),
+    createdBy: v.optional(v.string()),
+  }).index("by_asset", ["assetId"]),
 });
 
 export default schema;

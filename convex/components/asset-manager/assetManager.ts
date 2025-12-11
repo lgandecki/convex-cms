@@ -708,7 +708,6 @@ export const commitUpload = mutation({
       throw new Error("File metadata not found in _storage");
     }
 
-    console.log(fileDoc);
     // 3. Insert version
     const versionId = await ctx.db.insert("assetVersions", {
       assetId,
@@ -863,5 +862,168 @@ export const listPublishedFilesInFolder = query({
     }
 
     return results;
+  },
+});
+
+export const listPublishedAssetsInFolder = query({
+  args: {
+    folderPath: v.string(),
+  },
+  returns: v.array(
+    v.object({
+      folderPath: v.string(),
+      basename: v.string(),
+      version: v.number(),
+      label: v.optional(v.string()),
+      extra: v.optional(v.any()),
+      createdAt: v.number(),
+      publishedAt: v.optional(v.number()),
+      createdBy: v.optional(v.string()),
+      publishedBy: v.optional(v.string()),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const folderPath = normalizeFolderPath(args.folderPath);
+
+    const assets = await ctx.db
+      .query("assets")
+      .withIndex("by_folder_basename", (q) => q.eq("folderPath", folderPath))
+      .collect();
+
+    const results: {
+      folderPath: string;
+      basename: string;
+      version: number;
+      label?: string;
+      extra?: any;
+      createdAt: number;
+      publishedAt?: number;
+      createdBy?: string;
+      publishedBy?: string;
+    }[] = [];
+
+    for (const asset of assets) {
+      if (!asset.publishedVersionId) continue;
+
+      const version = await ctx.db.get(asset.publishedVersionId);
+      if (!version || version.state !== "published") continue;
+
+      results.push({
+        folderPath,
+        basename: asset.basename,
+        version: version.version,
+        label: version.label,
+        extra: version.extra,
+        createdAt: version.createdAt,
+        publishedAt: version.publishedAt,
+        createdBy: version.createdBy,
+        publishedBy: version.publishedBy,
+      });
+    }
+
+    return results;
+  },
+});
+
+export const moveAsset = mutation({
+  args: {
+    fromFolderPath: v.string(),
+    basename: v.string(),
+    toFolderPath: v.string(),
+  },
+  returns: v.object({
+    assetId: v.id("assets"),
+    fromFolderPath: v.string(),
+    toFolderPath: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const from = normalizeFolderPath(args.fromFolderPath);
+    const to = normalizeFolderPath(args.toFolderPath);
+    const now = Date.now();
+    const actorFields = await getActorFields(ctx);
+
+    const asset = await ctx.db
+      .query("assets")
+      .withIndex("by_folder_basename", (q) =>
+        q.eq("folderPath", from).eq("basename", args.basename),
+      )
+      .first();
+
+    if (!asset) {
+      throw new Error(`Asset not found at ${from}/${args.basename}`);
+    }
+
+    // Check for conflict at destination
+    const conflict = await ctx.db
+      .query("assets")
+      .withIndex("by_folder_basename", (q) =>
+        q.eq("folderPath", to).eq("basename", args.basename),
+      )
+      .first();
+
+    if (conflict) {
+      throw new Error(`Asset already exists at ${to}/${args.basename}`);
+    }
+
+    // Update asset location
+    await ctx.db.patch(asset._id, {
+      folderPath: to,
+      updatedAt: now,
+      updatedBy: actorFields.updatedBy,
+    });
+
+    // Log event
+    await ctx.db.insert("assetEvents", {
+      assetId: asset._id,
+      type: "move",
+      fromFolderPath: from,
+      toFolderPath: to,
+      createdAt: now,
+      createdBy: actorFields.createdBy,
+    });
+
+    return { assetId: asset._id, fromFolderPath: from, toFolderPath: to };
+  },
+});
+
+export const listAssetEvents = query({
+  args: {
+    folderPath: v.string(),
+    basename: v.string(),
+  },
+  returns: v.array(
+    v.object({
+      type: v.string(),
+      fromFolderPath: v.optional(v.string()),
+      toFolderPath: v.optional(v.string()),
+      createdAt: v.number(),
+      createdBy: v.optional(v.string()),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const folderPath = normalizeFolderPath(args.folderPath);
+
+    const asset = await ctx.db
+      .query("assets")
+      .withIndex("by_folder_basename", (q) =>
+        q.eq("folderPath", folderPath).eq("basename", args.basename),
+      )
+      .first();
+
+    if (!asset) return [];
+
+    const events = await ctx.db
+      .query("assetEvents")
+      .withIndex("by_asset", (q) => q.eq("assetId", asset._id))
+      .order("asc")
+      .collect();
+
+    return events.map((e) => ({
+      type: e.type,
+      fromFolderPath: e.fromFolderPath,
+      toFolderPath: e.toFolderPath,
+      createdAt: e.createdAt,
+      createdBy: e.createdBy,
+    }));
   },
 });

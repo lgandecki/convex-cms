@@ -11,6 +11,7 @@
 import type * as auth from "../auth.js";
 import type * as cli from "../cli.js";
 import type * as http from "../http.js";
+import type * as kanban from "../kanban.js";
 
 import type {
   ApiFromModules,
@@ -22,6 +23,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   cli: typeof cli;
   http: typeof http;
+  kanban: typeof kanban;
 }>;
 
 /**
@@ -191,6 +193,18 @@ export declare const components: {
         { basename: string; folderPath: string },
         any
       >;
+      listAssetEvents: FunctionReference<
+        "query",
+        "internal",
+        { basename: string; folderPath: string },
+        Array<{
+          createdAt: number;
+          createdBy?: string;
+          fromFolderPath?: string;
+          toFolderPath?: string;
+          type: string;
+        }>
+      >;
       listAssets: FunctionReference<
         "query",
         "internal",
@@ -224,6 +238,22 @@ export declare const components: {
           updatedBy?: string;
         }>
       >;
+      listPublishedAssetsInFolder: FunctionReference<
+        "query",
+        "internal",
+        { folderPath: string },
+        Array<{
+          basename: string;
+          createdAt: number;
+          createdBy?: string;
+          extra?: any;
+          folderPath: string;
+          label?: string;
+          publishedAt?: number;
+          publishedBy?: string;
+          version: number;
+        }>
+      >;
       listPublishedFilesInFolder: FunctionReference<
         "query",
         "internal",
@@ -237,6 +267,12 @@ export declare const components: {
           url: string;
           version: number;
         }>
+      >;
+      moveAsset: FunctionReference<
+        "mutation",
+        "internal",
+        { basename: string; fromFolderPath: string; toFolderPath: string },
+        { assetId: string; fromFolderPath: string; toFolderPath: string }
       >;
       publishDraft: FunctionReference<
         "mutation",
