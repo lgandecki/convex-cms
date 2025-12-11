@@ -10,6 +10,7 @@
 
 import type * as auth from "../auth.js";
 import type * as cli from "../cli.js";
+import type * as generateUploadUrl from "../generateUploadUrl.js";
 import type * as http from "../http.js";
 import type * as kanban from "../kanban.js";
 
@@ -22,6 +23,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   cli: typeof cli;
+  generateUploadUrl: typeof generateUploadUrl;
   http: typeof http;
   kanban: typeof kanban;
 }>;
@@ -54,6 +56,21 @@ export declare const internal: FilterApi<
 
 export declare const components: {
   assetManager: {
+    assetFsHttp: {
+      getVersionForServing: FunctionReference<
+        "query",
+        "internal",
+        { versionId: string },
+        | null
+        | {
+            cacheControl?: string;
+            contentType?: string;
+            kind: "blob";
+            storageId: string;
+          }
+        | { cacheControl?: string; kind: "redirect"; location: string }
+      >;
+    };
     assetManager: {
       commitUpload: FunctionReference<
         "mutation",
@@ -286,6 +303,9 @@ export declare const components: {
         { name?: string; newPath?: string; path: string },
         any
       >;
+    };
+    generateUploadUrl: {
+      generateUploadUrl: FunctionReference<"mutation", "internal", {}, string>;
     };
   };
 };

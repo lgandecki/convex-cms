@@ -23,6 +23,22 @@ import type { FunctionReference } from "convex/server";
  */
 export type ComponentApi<Name extends string | undefined = string | undefined> =
   {
+    assetFsHttp: {
+      getVersionForServing: FunctionReference<
+        "query",
+        "internal",
+        { versionId: string },
+        | null
+        | {
+            cacheControl?: string;
+            contentType?: string;
+            kind: "blob";
+            storageId: string;
+          }
+        | { cacheControl?: string; kind: "redirect"; location: string },
+        Name
+      >;
+    };
     assetManager: {
       commitUpload: FunctionReference<
         "mutation",
@@ -272,6 +288,15 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         { name?: string; newPath?: string; path: string },
         any,
+        Name
+      >;
+    };
+    generateUploadUrl: {
+      generateUploadUrl: FunctionReference<
+        "mutation",
+        "internal",
+        {},
+        string,
         Name
       >;
     };

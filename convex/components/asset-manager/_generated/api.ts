@@ -13,7 +13,9 @@ import type * as allocateFolderSegment from "../allocateFolderSegment.js";
 import type * as assetFsHttp from "../assetFsHttp.js";
 import type * as assetManager from "../assetManager.js";
 import type * as authAdapter from "../authAdapter.js";
+import type * as generateUploadUrl from "../generateUploadUrl.js";
 import type * as helpers_parseVersionIdFromPath from "../helpers/parseVersionIdFromPath.js";
+import type * as registerAssetFsRoutes from "../registerAssetFsRoutes.js";
 import type * as slugify from "../slugify.js";
 
 import type {
@@ -29,7 +31,9 @@ const fullApi: ApiFromModules<{
   assetFsHttp: typeof assetFsHttp;
   assetManager: typeof assetManager;
   authAdapter: typeof authAdapter;
+  generateUploadUrl: typeof generateUploadUrl;
   "helpers/parseVersionIdFromPath": typeof helpers_parseVersionIdFromPath;
+  registerAssetFsRoutes: typeof registerAssetFsRoutes;
   slugify: typeof slugify;
 }> = anyApi as any;
 
