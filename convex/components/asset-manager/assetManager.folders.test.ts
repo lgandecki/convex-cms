@@ -96,21 +96,21 @@ describe("folders: path-first + label-first APIs", () => {
     expect(folder?.name).toBe("Q&A");
   });
 
-  // it("createFolderByName throws when same parent + same name already exist", async () => {
-  //   const t = convexTest(schema, modules);
+  it("createFolderByName throws when same parent + same name already exist", async () => {
+    const t = convexTest(schema, modules);
 
-  //   await t.mutation(api.assetManager.createFolderByName, {
-  //     parentPath: "",
-  //     name: "Kanban",
-  //   });
+    await t.mutation(api.assetManager.createFolderByName, {
+      parentPath: "",
+      name: "Kanban",
+    });
 
-  //   await expect(
-  //     t.mutation(api.assetManager.createFolderByName, {
-  //       parentPath: "",
-  //       name: "Kanban",
-  //     }),
-  //   ).rejects.toThrow(/already exists/i);
-  // });
+    await expect(
+      t.mutation(api.assetManager.createFolderByName, {
+        parentPath: "",
+        name: "Kanban",
+      }),
+    ).rejects.toThrow(/already exists/i);
+  });
 
   it("listFolders returns empty array when there are no folders", async () => {
     const t = convexTest(schema, modules);
@@ -269,22 +269,6 @@ describe("folders: path-first + label-first APIs", () => {
 });
 
 describe("createFolderByName slug + collision behaviour", () => {
-  // it("throws when same parent + same name already exist", async () => {
-  //   const t = convexTest(schema, modules);
-
-  //   await t.mutation(api.assetManager.createFolderByName, {
-  //     parentPath: "",
-  //     name: "Kanban",
-  //   });
-
-  //   await expect(
-  //     t.mutation(api.assetManager.createFolderByName, {
-  //       parentPath: "",
-  //       name: "Kanban",
-  //     }),
-  //   ).rejects.toThrow(/already exists/i);
-  // });
-
   it("handles slug collisions under same parent by suffixing", async () => {
     const t = convexTest(schema, modules);
 
@@ -332,21 +316,157 @@ describe("createFolderByName slug + collision behaviour", () => {
   });
 });
 
-test("returns direct children of root when parentPath is empty", async () => {
+test("does not return children from folders with dots in names", async () => {
   const t = convexTest(schema, modules);
 
   await t.mutation(api.assetManager.createFolderByPath, {
     path: "test",
   });
   await t.mutation(api.assetManager.createFolderByPath, {
-    path: "test/test2",
+    path: "test/child",
   });
   await t.mutation(api.assetManager.createFolderByPath, {
-    path: "testa/test2",
+    path: "test.other/child", // child of "test.other", NOT "test"
   });
 
   const folders = await t.query(api.assetManager.listFolders, {
-    parentPath: "test/",
+    parentPath: "test",
   });
+
   expect(folders).toHaveLength(1);
+  expect(folders[0].path).toBe("test/child");
+});
+
+test("createFolderByPath throws when same path already exist", async () => {
+  const t = convexTest(schema, modules);
+
+  await t.mutation(api.assetManager.createFolderByPath, {
+    path: "kanban",
+  });
+
+  await expect(
+    t.mutation(api.assetManager.createFolderByPath, {
+      path: "kanban",
+    }),
+  ).rejects.toThrow(/already exists/i);
+});
+
+test("updateFolder throws when folder does not exist", async () => {
+  const t = convexTest(schema, modules);
+
+  await expect(
+    t.mutation(api.assetManager.updateFolder, {
+      path: "kanban",
+      name: "Kanban",
+    }),
+  ).rejects.toThrow(/does not exist/i);
+});
+
+test("updateFolder updates the folder name", async () => {
+  const t = convexTest(schema, modules);
+
+  await t.mutation(api.assetManager.createFolderByPath, {
+    path: "test",
+  });
+
+  await t.mutation(api.assetManager.updateFolder, {
+    path: "test",
+    name: "Kanban",
+  });
+
+  const folder = await t.query(api.assetManager.getFolder, {
+    path: "test",
+  });
+
+  expect(folder?.name).toBe("Kanban");
+});
+
+test("updateFolder updates the folder path", async () => {
+  const t = convexTest(schema, modules);
+
+  await t.mutation(api.assetManager.createFolderByPath, {
+    path: "some/place",
+  });
+
+  await t.mutation(api.assetManager.updateFolder, {
+    path: "some/place",
+    newPath: "other/place",
+  });
+});
+
+//TODO what about updating to paths of other users?
+// maybe originally I shouldn't care? But for things like generic image enerator or even bookgenius thats kinda needed
+test("fails if trying to update a folder to a path that already exists", async () => {
+  const t = convexTest(schema, modules);
+
+  await t.mutation(api.assetManager.createFolderByPath, {
+    path: "test",
+  });
+
+  await t.mutation(api.assetManager.createFolderByPath, {
+    path: "other/place",
+  });
+
+  await expect(
+    t.mutation(api.assetManager.updateFolder, {
+      path: "test",
+      newPath: "other/place",
+    }),
+  ).rejects.toThrow(/already exists/i);
+});
+
+describe("folders: path-first + label-first APIs", () => {
+  it("createFolderByName handles slug collisions at root without leading slash", async () => {
+    const t = convexTest(schema, modules);
+
+    const id1 = await t.mutation(api.assetManager.createFolderByName, {
+      parentPath: "",
+      name: "Q&A",
+    });
+
+    const id2 = await t.mutation(api.assetManager.createFolderByName, {
+      parentPath: "",
+      name: "Q/A",
+    });
+
+    expect(id2).not.toEqual(id1);
+
+    const rootChildren = await t.query(api.assetManager.listFolders, {});
+
+    const paths = rootChildren.map((f) => f.path).sort();
+    const byPath: Record<string, { name: string }> = {};
+    for (const f of rootChildren) {
+      byPath[f.path] = { name: f.name };
+    }
+
+    // Both children should be root-level, no leading slashes
+    expect(paths).toContain("q-a");
+    const suffixedRoot = paths.find((p) => p !== "q-a" && p.startsWith("q-a-"));
+    expect(suffixedRoot).toBeDefined();
+
+    expect(byPath["q-a"]?.name).toBe("Q&A");
+    if (suffixedRoot) {
+      expect(byPath[suffixedRoot].name).toBe("Q/A");
+    }
+  });
+});
+
+test("createFolderByPath sets createdBy/updatedBy from identity", async () => {
+  const t = convexTest(schema, modules);
+
+  const asUser = t.withIdentity({
+    name: "Łukasz",
+    tokenIdentifier: "user-123", // if you omit this, convex-test generates one
+  }); // :contentReference[oaicite:4]{index=4}
+
+  await asUser.mutation(api.assetManager.createFolderByPath, {
+    path: "kanban/backlog",
+  });
+
+  const folder = await asUser.query(api.assetManager.getFolder, {
+    path: "kanban/backlog",
+  });
+
+  expect(folder?.createdBy).toBe("user-123");
+  expect(folder?.updatedBy).toBe("user-123");
 });

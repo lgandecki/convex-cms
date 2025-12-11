@@ -8,8 +8,10 @@
  * @module
  */
 
+import type * as _testInsertFakeFile from "../_testInsertFakeFile.js";
 import type * as allocateFolderSegment from "../allocateFolderSegment.js";
 import type * as assetManager from "../assetManager.js";
+import type * as authAdapter from "../authAdapter.js";
 import type * as slugify from "../slugify.js";
 
 import type {
@@ -20,8 +22,10 @@ import type {
 import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
+  _testInsertFakeFile: typeof _testInsertFakeFile;
   allocateFolderSegment: typeof allocateFolderSegment;
   assetManager: typeof assetManager;
+  authAdapter: typeof authAdapter;
   slugify: typeof slugify;
 }> = anyApi as any;
 

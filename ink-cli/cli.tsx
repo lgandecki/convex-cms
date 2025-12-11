@@ -3,7 +3,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { render, Text, Box } from "ink";
 import TextInput from "ink-text-input";
 import { ConvexHttpClient } from "convex/browser";
-import { api } from "../convex/components/asset-manager/_generated/api";
+import { api } from "../convex/_generated/api";
 
 // --- Config -----------------------------------------------------------------
 
@@ -70,7 +70,7 @@ const App: React.FC = () => {
     setError(null);
     try {
       const parentPath = normalizePath(targetPath) || undefined;
-      const res = await client.query(api.assetManager.listFolders, {
+      const res = await client.query(api.cli.listFolders, {
         parentPath,
       });
       setFolders(res);
@@ -114,7 +114,7 @@ const App: React.FC = () => {
 
       // verify folder exists
       try {
-        const folder = await client.query(api.assetManager.getFolder, {
+        const folder = await client.query(api.cli.getFolder, {
           path: nextPath,
         });
         if (!folder) {
@@ -149,7 +149,7 @@ const App: React.FC = () => {
       }
       try {
         const parentPath = normalizePath(currentPath);
-        const res = await client.mutation(api.assetManager.createFolderByName, {
+        const res = await client.mutation(api.cli.createFolderByName, {
           parentPath,
           name,
         });
