@@ -1,5 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useMutation } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 import { queries } from "../../routes/index";
 import {
   Grid3X3,
@@ -12,6 +14,7 @@ import {
   FolderOpen,
   Folder,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -21,6 +24,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { AssetCard, type AssetData } from "./AssetCard";
 import { AssetListRow } from "./AssetListRow";
 import { getContentTypeCategory } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface AssetListProps {
   folderPath: string;
@@ -126,6 +130,86 @@ export function AssetList({
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<ContentTypeFilter>("all");
+  const [dragOver, setDragOver] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadingFileName, setUploadingFileName] = useState<string | null>(null);
+
+  // Upload mutations
+  const generateUploadUrl = useMutation(api.generateUploadUrl.generateUploadUrl);
+  const commitUpload = useMutation(api.generateUploadUrl.commitUpload);
+
+  // Handle file drop upload
+  const handleFileDrop = useCallback(async (file: File) => {
+    setIsUploading(true);
+    setUploadingFileName(file.name);
+
+    try {
+      // 1. Get upload URL
+      const uploadUrl = await generateUploadUrl();
+
+      // 2. Upload file
+      const res = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+
+      if (!res.ok) {
+        throw new Error("Upload failed");
+      }
+
+      const { storageId } = await res.json();
+
+      // 3. Commit the upload with original filename, published immediately
+      await commitUpload({
+        folderPath,
+        basename: file.name,
+        storageId,
+        publish: true,
+      });
+
+      toast.success(`"${file.name}" uploaded and published`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to upload file";
+      toast.error(message);
+    } finally {
+      setIsUploading(false);
+      setUploadingFileName(null);
+    }
+  }, [folderPath, generateUploadUrl, commitUpload]);
+
+  // Drag and drop handlers
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.types.includes("Files")) {
+      setDragOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set dragOver to false if we're leaving the container entirely
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom) {
+      setDragOver(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      // Upload first file (could extend to support multiple)
+      handleFileDrop(files[0]);
+    }
+  }, [handleFileDrop]);
 
   // Non-suspense queries so SSR renders instantly with loading state
   const { data: subfolders, isLoading: subfoldersLoading } = useQuery(queries.folders(folderPath));
@@ -194,7 +278,59 @@ export function AssetList({
   const hasNoContent = assets.length === 0 && subfolders.length === 0;
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden">
+    <div
+      className="flex-1 flex flex-col h-full overflow-hidden relative"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drop zone overlay */}
+      {(dragOver || isUploading) && (
+        <div className="absolute inset-0 z-50 pointer-events-none">
+          {/* Semi-transparent backdrop */}
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
+
+          {/* Edge highlight border */}
+          <div className={cn(
+            "absolute inset-3 rounded-xl border-2 border-dashed transition-colors",
+            isUploading ? "border-primary" : "border-primary animate-pulse"
+          )} />
+
+          {/* Corner accents */}
+          <div className="absolute top-3 left-3 w-8 h-8 border-l-4 border-t-4 border-primary rounded-tl-xl" />
+          <div className="absolute top-3 right-3 w-8 h-8 border-r-4 border-t-4 border-primary rounded-tr-xl" />
+          <div className="absolute bottom-3 left-3 w-8 h-8 border-l-4 border-b-4 border-primary rounded-bl-xl" />
+          <div className="absolute bottom-3 right-3 w-8 h-8 border-r-4 border-b-4 border-primary rounded-br-xl" />
+
+          {/* Center content */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
+            {isUploading ? (
+              <>
+                <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Loader2 className="h-10 w-10 text-primary animate-spin" />
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-semibold text-foreground">Uploading...</p>
+                  <p className="text-sm text-muted-foreground mt-1">{uploadingFileName}</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Upload className="h-10 w-10 text-primary" />
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-semibold text-foreground">Drop file to upload</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    to <span className="font-mono text-primary">{folderPath || "(root)"}</span>
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="p-4 border-b border-border space-y-3">
         {/* Top row: path and actions */}
