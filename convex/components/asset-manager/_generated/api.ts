@@ -17,6 +17,7 @@ import type * as generateUploadUrl from "../generateUploadUrl.js";
 import type * as helpers_parseVersionIdFromPath from "../helpers/parseVersionIdFromPath.js";
 import type * as registerAssetFsRoutes from "../registerAssetFsRoutes.js";
 import type * as slugify from "../slugify.js";
+import type * as validators from "../validators.js";
 
 import type {
   ApiFromModules,
@@ -35,6 +36,7 @@ const fullApi: ApiFromModules<{
   "helpers/parseVersionIdFromPath": typeof helpers_parseVersionIdFromPath;
   registerAssetFsRoutes: typeof registerAssetFsRoutes;
   slugify: typeof slugify;
+  validators: typeof validators;
 }> = anyApi as any;
 
 /**

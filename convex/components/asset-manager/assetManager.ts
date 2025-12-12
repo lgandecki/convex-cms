@@ -4,6 +4,7 @@ import { slugify } from "./slugify";
 import { allocateFolderSegment } from "./allocateFolderSegment";
 import { getActorFields } from "./authAdapter";
 import { Id } from "./_generated/dataModel";
+import { folderFields, assetFields } from "./validators";
 
 const ROOT_PARENT = "" as const;
 
@@ -105,20 +106,7 @@ export const createFolderByName = mutation({
 
 export const getFolder = query({
   args: { path: v.string() },
-  returns: v.union(
-    v.null(),
-    v.object({
-      _id: v.id("folders"),
-      path: v.string(),
-      name: v.string(),
-      extra: v.optional(v.any()),
-      createdAt: v.number(),
-      updatedAt: v.number(),
-      createdBy: v.optional(v.string()),
-      updatedBy: v.optional(v.string()),
-      _creationTime: v.number(),
-    }),
-  ),
+  returns: v.union(v.null(), v.object(folderFields)),
   handler: async (ctx, args) => {
     const normalized = normalizeFolderPath(args.path);
     if (!normalized) return null;
@@ -139,19 +127,7 @@ export const listFolders = query({
   args: {
     parentPath: v.optional(v.string()),
   },
-  returns: v.array(
-    v.object({
-      _id: v.id("folders"),
-      path: v.string(),
-      name: v.string(),
-      extra: v.optional(v.any()),
-      createdAt: v.number(),
-      updatedAt: v.number(),
-      createdBy: v.optional(v.string()),
-      updatedBy: v.optional(v.string()),
-      _creationTime: v.number(),
-    }),
-  ),
+  returns: v.array(v.object(folderFields)),
   handler: async (ctx, args) => {
     const parentPath =
       args.parentPath === undefined
@@ -293,21 +269,7 @@ export const createAsset = mutation({
 
 export const getAsset = query({
   args: { folderPath: v.string(), basename: v.string() },
-  returns: v.union(
-    v.null(),
-    v.object({
-      _id: v.id("assets"),
-      folderPath: v.string(),
-      basename: v.string(),
-      extra: v.optional(v.any()),
-      versionCounter: v.number(),
-      createdAt: v.number(),
-      updatedAt: v.number(),
-      createdBy: v.optional(v.string()),
-      updatedBy: v.optional(v.string()),
-      _creationTime: v.number(),
-    }),
-  ),
+  returns: v.union(v.null(), v.object(assetFields)),
   handler: async (ctx, args) => {
     const normalizedFolderPath = normalizeFolderPath(args.folderPath);
 
@@ -329,22 +291,7 @@ export const getAsset = query({
 
 export const listAssets = query({
   args: { folderPath: v.string() },
-  returns: v.array(
-    v.object({
-      _id: v.id("assets"),
-      folderPath: v.string(),
-      basename: v.string(),
-      extra: v.optional(v.any()),
-      versionCounter: v.number(),
-      publishedVersionId: v.optional(v.id("assetVersions")),
-      draftVersionId: v.optional(v.id("assetVersions")),
-      createdAt: v.number(),
-      updatedAt: v.number(),
-      createdBy: v.optional(v.string()),
-      updatedBy: v.optional(v.string()),
-      _creationTime: v.number(),
-    }),
-  ),
+  returns: v.array(v.object(assetFields)),
   handler: async (ctx, args) => {
     const normalizedFolderPath = normalizeFolderPath(args.folderPath);
 
@@ -364,33 +311,8 @@ export const getFolderWithAssets = query({
   returns: v.union(
     v.null(),
     v.object({
-      folder: v.object({
-        _id: v.id("folders"),
-        path: v.string(),
-        name: v.string(),
-        extra: v.optional(v.any()),
-        createdAt: v.number(),
-        updatedAt: v.number(),
-        createdBy: v.optional(v.string()),
-        updatedBy: v.optional(v.string()),
-        _creationTime: v.number(),
-      }),
-      assets: v.array(
-        v.object({
-          _id: v.id("assets"),
-          folderPath: v.string(),
-          basename: v.string(),
-          extra: v.optional(v.any()),
-          versionCounter: v.number(),
-          publishedVersionId: v.optional(v.id("assetVersions")),
-          draftVersionId: v.optional(v.id("assetVersions")),
-          createdAt: v.number(),
-          updatedAt: v.number(),
-          createdBy: v.optional(v.string()),
-          updatedBy: v.optional(v.string()),
-          _creationTime: v.number(),
-        }),
-      ),
+      folder: v.object(folderFields),
+      assets: v.array(v.object(assetFields)),
     }),
   ),
   handler: async (ctx, args) => {
@@ -756,6 +678,91 @@ export const commitUpload = mutation({
     }
 
     return { assetId, versionId, version: nextVersion };
+  },
+});
+
+/**
+ * Restore a previous version by creating a new version that references
+ * the same storage file. This preserves full history:
+ * v1 (initial) → v2 (newer) → v3 (restored from v1)
+ */
+export const restoreVersion = mutation({
+  args: {
+    versionId: v.id("assetVersions"),
+    label: v.optional(v.string()),
+  },
+  returns: v.object({
+    assetId: v.id("assets"),
+    versionId: v.id("assetVersions"),
+    version: v.number(),
+    restoredFromVersion: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const actorFields = await getActorFields(ctx);
+
+    // 1. Get the version to restore from
+    const sourceVersion = await ctx.db.get(args.versionId);
+    if (!sourceVersion) {
+      throw new Error("Version not found");
+    }
+    if (!sourceVersion.storageId) {
+      throw new Error("Version has no associated file");
+    }
+
+    // 2. Get the asset
+    const asset = await ctx.db.get(sourceVersion.assetId);
+    if (!asset) {
+      throw new Error("Asset not found");
+    }
+
+    // 3. Create new version with same storage reference
+    const nextVersion = (asset.versionCounter ?? 0) + 1;
+    const label =
+      args.label ?? `Restored from v${sourceVersion.version}`;
+
+    const newVersionId = await ctx.db.insert("assetVersions", {
+      assetId: asset._id,
+      version: nextVersion,
+      state: "published",
+      label,
+      extra: sourceVersion.extra,
+      storageId: sourceVersion.storageId,
+      size: sourceVersion.size,
+      contentType: sourceVersion.contentType,
+      sha256: sourceVersion.sha256,
+      createdAt: now,
+      createdBy: actorFields.createdBy,
+      publishedAt: now,
+      publishedBy: actorFields.updatedBy,
+      archivedAt: undefined,
+      archivedBy: undefined,
+    });
+
+    // 4. Archive current published version if exists
+    if (asset.publishedVersionId) {
+      await ctx.db.patch(asset.publishedVersionId, {
+        state: "archived",
+        archivedAt: now,
+        archivedBy: actorFields.updatedBy,
+      });
+    }
+
+    // 5. Update asset pointers
+    await ctx.db.patch(asset._id, {
+      versionCounter: nextVersion,
+      publishedVersionId: newVersionId,
+      draftVersionId: undefined,
+      updatedAt: now,
+      updatedBy: actorFields.updatedBy,
+    });
+
+    return {
+      assetId: asset._id,
+      versionId: newVersionId,
+      version: nextVersion,
+      restoredFromVersion: sourceVersion.version,
+    };
   },
 });
 

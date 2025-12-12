@@ -149,3 +149,30 @@ export const publishDraft = mutation({
     );
   },
 });
+
+export const restoreVersion = mutation({
+  args: {
+    versionId: v.string(),
+    label: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(
+      components.assetManager.assetManager.restoreVersion,
+      args,
+    );
+  },
+});
+
+// --- Admin Preview (any version state) ---
+
+export const getVersionPreviewUrl = query({
+  args: {
+    versionId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(
+      components.assetManager.assetFsHttp.getVersionPreviewUrl,
+      args,
+    );
+  },
+});

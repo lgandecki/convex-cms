@@ -1,5 +1,7 @@
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { Id } from "../../../convex/_generated/dataModel";
 import { formatDistanceToNow } from "date-fns";
 import {
   X,
@@ -17,6 +19,7 @@ import {
   FileJson,
   Package,
   ExternalLink,
+  RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -68,9 +71,28 @@ export function AssetDetail({
   });
 
   const publishDraft = useMutation(api.cli.publishDraft);
+  const restoreVersion = useMutation(api.cli.restoreVersion);
+
+  // Track which version is selected for preview (defaults to published)
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+
+  // Auto-select published version when it changes
+  useEffect(() => {
+    if (asset?.publishedVersionId && !selectedVersionId) {
+      setSelectedVersionId(asset.publishedVersionId);
+    }
+  }, [asset?.publishedVersionId, selectedVersionId]);
 
   const isLoading = asset === undefined;
-  const category = getContentTypeCategory(publishedFile?.contentType);
+
+  // Get the selected version data
+  const selectedVersion = versions?.find((v) => v._id === selectedVersionId);
+  const previewUrl = selectedVersion?.storageId
+    ? getVersionUrl({ versionId: selectedVersion._id, basename })
+    : publishedFile?.url;
+  const previewContentType = selectedVersion?.contentType || publishedFile?.contentType;
+
+  const category = getContentTypeCategory(previewContentType);
   const Icon = typeIcons[category];
 
   const handlePublishDraft = async () => {
@@ -79,6 +101,18 @@ export function AssetDetail({
       toast.success("Draft published successfully");
     } catch (error) {
       toast.error("Failed to publish draft");
+    }
+  };
+
+  const handleRestoreVersion = async (versionId: string, versionNumber: number) => {
+    try {
+      const result = await restoreVersion({
+        versionId: versionId as Id<"assetManager:assetVersions">,
+      });
+      setSelectedVersionId(result.versionId);
+      toast.success(`Restored version ${versionNumber} as version ${result.version}`);
+    } catch (error) {
+      toast.error("Failed to restore version");
     }
   };
 
@@ -131,29 +165,41 @@ export function AssetDetail({
           <div className="p-4 space-y-6">
             {/* Preview */}
             <div>
-              <h3 className="text-sm font-medium text-foreground mb-3">
-                Preview
-              </h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium text-foreground">
+                  Preview
+                </h3>
+                {selectedVersion && (
+                  <Badge
+                    variant={selectedVersion.state as any}
+                    className="text-xs"
+                  >
+                    v{selectedVersion.version} ({selectedVersion.state})
+                  </Badge>
+                )}
+              </div>
               <div className="rounded-lg overflow-hidden border border-border bg-surface-2">
-                {category === "image" && publishedFile?.url ? (
+                {category === "image" && previewUrl ? (
                   <img
-                    src={publishedFile.url}
+                    src={previewUrl}
                     alt={basename}
                     className="w-full h-auto max-h-64 object-contain"
                   />
-                ) : category === "audio" && publishedFile?.url ? (
+                ) : category === "audio" && previewUrl ? (
                   <div className="p-4">
                     <audio
                       controls
                       className="w-full"
-                      src={publishedFile.url}
+                      src={previewUrl}
+                      key={previewUrl}
                     />
                   </div>
-                ) : category === "video" && publishedFile?.url ? (
+                ) : category === "video" && previewUrl ? (
                   <video
                     controls
                     className="w-full max-h-64"
-                    src={publishedFile.url}
+                    src={previewUrl}
+                    key={previewUrl}
                   />
                 ) : (
                   <div className="aspect-video flex items-center justify-center">
@@ -265,12 +311,17 @@ export function AssetDetail({
                         versionId: version._id,
                         basename,
                       });
+                    const isSelected = selectedVersionId === version._id;
 
                     return (
-                      <div
+                      <button
                         key={version._id}
+                        onClick={() => setSelectedVersionId(version._id)}
                         className={cn(
-                          "p-3 rounded-lg border transition-colors",
+                          "w-full text-left p-3 rounded-lg border transition-all",
+                          isSelected
+                            ? "ring-2 ring-primary ring-offset-1"
+                            : "hover:border-primary/50",
                           version.state === "published"
                             ? "border-success/30 bg-success/5"
                             : version.state === "draft"
@@ -305,12 +356,13 @@ export function AssetDetail({
                                     variant="ghost"
                                     size="icon-sm"
                                     className="h-6 w-6"
-                                    onClick={() =>
+                                    onClick={(e) => {
+                                      e.stopPropagation();
                                       copyToClipboard(
                                         versionUrl,
                                         `Version ${version.version} URL`
-                                      )
-                                    }
+                                      );
+                                    }}
                                   >
                                     <Copy className="h-3 w-3" />
                                   </Button>
@@ -325,6 +377,7 @@ export function AssetDetail({
                                     variant="ghost"
                                     size="icon-sm"
                                     className="h-6 w-6"
+                                    onClick={(e) => e.stopPropagation()}
                                     asChild
                                   >
                                     <a
@@ -363,12 +416,29 @@ export function AssetDetail({
                             variant="success"
                             size="sm"
                             className="mt-2 w-full"
-                            onClick={handlePublishDraft}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePublishDraft();
+                            }}
                           >
                             Publish This Version
                           </Button>
                         )}
-                      </div>
+                        {version.state === "archived" && version.storageId && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-2 w-full"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRestoreVersion(version._id, version.version);
+                            }}
+                          >
+                            <RotateCcw className="h-3 w-3 mr-2" />
+                            Restore This Version
+                          </Button>
+                        )}
+                      </button>
                     );
                   })}
                 </div>

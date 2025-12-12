@@ -30,6 +30,50 @@ export const getBlobForServing = action({
 
 const SMALL_FILE_LIMIT = 20 * 1024 * 1024; // 20MB
 
+/**
+ * Get a direct storage URL for any version (regardless of state).
+ * This is for admin preview only - it doesn't enforce published-only access.
+ * Returns the storage URL which can be used to preview draft/archived versions.
+ */
+export const getVersionPreviewUrl = query({
+  args: {
+    versionId: v.id("assetVersions"),
+  },
+  returns: v.union(
+    v.null(),
+    v.object({
+      url: v.string(),
+      contentType: v.optional(v.string()),
+      size: v.optional(v.number()),
+    }),
+  ),
+  handler: async (ctx, { versionId }) => {
+    const version = await ctx.db.get(versionId);
+    if (!version) return null;
+    if (!version.storageId) return null;
+
+    const url = await ctx.storage.getUrl(version.storageId);
+    if (!url) return null;
+
+    return {
+      url,
+      contentType: version.contentType,
+      size: version.size,
+    };
+  },
+});
+
+/**
+ * Get version data for HTTP serving.
+ *
+ * Serves ANY version that has storage, regardless of state (draft/published/archived).
+ * Version IDs are opaque UUIDs - knowing an ID is sufficient authorization.
+ * The "published" concept is about which version is "current" at a path, not access control.
+ *
+ * Caching strategy:
+ * - Small files (≤20MB): Served as blobs with immutable caching (1 year)
+ * - Large files (>20MB): Served via redirect to storage URL with short caching (60s)
+ */
 export const getVersionForServing = query({
   args: {
     versionId: v.id("assetVersions"),
@@ -51,7 +95,6 @@ export const getVersionForServing = query({
   handler: async (ctx, { versionId }) => {
     const version = await ctx.db.get(versionId);
     if (!version) return null;
-    if (version.state !== "published") return null;
     if (!version.storageId) return null;
 
     const size = version.size ?? 0;

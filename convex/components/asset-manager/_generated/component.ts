@@ -45,6 +45,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         | { cacheControl?: string; kind: "redirect"; location: string },
         Name
       >;
+      getVersionPreviewUrl: FunctionReference<
+        "query",
+        "internal",
+        { versionId: string },
+        null | { contentType?: string; size?: number; url: string },
+        Name
+      >;
     };
     assetManager: {
       commitUpload: FunctionReference<
@@ -105,8 +112,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           basename: string;
           createdAt: number;
           createdBy?: string;
+          draftVersionId?: string;
           extra?: any;
           folderPath: string;
+          publishedVersionId?: string;
           updatedAt: number;
           updatedBy?: string;
           versionCounter: number;
@@ -292,6 +301,18 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         { basename: string; folderPath: string },
         any,
+        Name
+      >;
+      restoreVersion: FunctionReference<
+        "mutation",
+        "internal",
+        { label?: string; versionId: string },
+        {
+          assetId: string;
+          restoredFromVersion: number;
+          version: number;
+          versionId: string;
+        },
         Name
       >;
       updateFolder: FunctionReference<

@@ -79,6 +79,60 @@ describe("assets (logical layer)", () => {
     expect(asset).toBeNull();
   });
 
+  it("getAsset includes publishedVersionId when asset has a published version", async () => {
+    const t = convexTest(schema, modules);
+
+    // Create asset
+    await t.mutation(api.assetManager.createAsset, {
+      folderPath: "",
+      basename: "test-published.txt",
+    });
+
+    // Commit a published version
+    const result = await t.mutation(api.assetManager.commitVersion, {
+      folderPath: "",
+      basename: "test-published.txt",
+      publish: true,
+      label: "v1",
+    });
+
+    // Get the asset and verify publishedVersionId is included
+    const asset = await t.query(api.assetManager.getAsset, {
+      folderPath: "",
+      basename: "test-published.txt",
+    });
+
+    expect(asset).not.toBeNull();
+    expect(asset?.publishedVersionId).toBe(result.versionId);
+  });
+
+  it("getAsset includes draftVersionId when asset has a draft version", async () => {
+    const t = convexTest(schema, modules);
+
+    // Create asset
+    await t.mutation(api.assetManager.createAsset, {
+      folderPath: "",
+      basename: "test-draft.txt",
+    });
+
+    // Commit a draft version
+    const result = await t.mutation(api.assetManager.commitVersion, {
+      folderPath: "",
+      basename: "test-draft.txt",
+      publish: false,
+      label: "draft-v1",
+    });
+
+    // Get the asset and verify draftVersionId is included
+    const asset = await t.query(api.assetManager.getAsset, {
+      folderPath: "",
+      basename: "test-draft.txt",
+    });
+
+    expect(asset).not.toBeNull();
+    expect(asset?.draftVersionId).toBe(result.versionId);
+  });
+
   it("listAssets returns assets only for the given folderPath", async () => {
     const t = convexTest(schema, modules);
 

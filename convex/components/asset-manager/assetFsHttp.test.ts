@@ -5,7 +5,8 @@
  * This module handles serving asset versions over HTTP with intelligent caching:
  * - Small files (≤20MB): Served as blobs with immutable caching (1 year)
  * - Large files (>20MB): Served via redirect to storage URL with short caching (60s)
- * - Only published versions are served; drafts and archived versions return null
+ * - Any version with storage is served (draft, published, archived)
+ * - Version IDs are opaque UUIDs - knowing the ID is sufficient authorization
  */
 import { describe, it, expect } from "vitest";
 import { convexTest } from "convex-test";
@@ -13,12 +14,134 @@ import schema from "./schema";
 import { api, internal } from "./_generated/api";
 import { modules } from "./test.setup";
 
+describe("getVersionPreviewUrl (admin preview - any version state)", () => {
+  it("returns URL for archived versions (for admin preview)", async () => {
+    const t = convexTest(schema, modules);
+
+    // Create two versions - the first will be archived when second is published
+    const s1 = await t.action(
+      internal._testInsertFakeFile._testStoreFakeFile,
+      { size: 100, contentType: "image/png" },
+    );
+    const s2 = await t.action(
+      internal._testInsertFakeFile._testStoreFakeFile,
+      { size: 200, contentType: "image/png" },
+    );
+
+    const v1 = await t.mutation(api.assetManager.commitUpload, {
+      folderPath: "",
+      basename: "preview-test.png",
+      storageId: s1,
+      publish: true,
+    });
+
+    // Publishing v2 archives v1
+    await t.mutation(api.assetManager.commitUpload, {
+      folderPath: "",
+      basename: "preview-test.png",
+      storageId: s2,
+      publish: true,
+    });
+
+    // Verify v1 is archived
+    const versions = await t.query(api.assetManager.getAssetVersions, {
+      folderPath: "",
+      basename: "preview-test.png",
+    });
+    const archivedV1 = versions.find((v) => v._id === v1.versionId);
+    expect(archivedV1?.state).toBe("archived");
+
+    // v1 is archived - but admin preview should still return URL
+    const result = await t.query(api.assetFsHttp.getVersionPreviewUrl, {
+      versionId: v1.versionId,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.url).toBeDefined();
+    expect(typeof result?.url).toBe("string");
+    expect((result?.url ?? "").length).toBeGreaterThan(0);
+  });
+
+  it("returns URL for draft versions (for admin preview)", async () => {
+    const t = convexTest(schema, modules);
+
+    const storageId = await t.action(
+      internal._testInsertFakeFile._testStoreFakeFile,
+      { size: 100, contentType: "application/json" },
+    );
+
+    const { versionId } = await t.mutation(api.assetManager.commitUpload, {
+      folderPath: "",
+      basename: "draft-preview.json",
+      storageId,
+      publish: false, // Draft only
+    });
+
+    // Verify it's a draft
+    const versions = await t.query(api.assetManager.getAssetVersions, {
+      folderPath: "",
+      basename: "draft-preview.json",
+    });
+    expect(versions[0]?.state).toBe("draft");
+
+    // Draft version should be previewable in admin
+    const result = await t.query(api.assetFsHttp.getVersionPreviewUrl, {
+      versionId,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.url).toBeDefined();
+    expect((result?.url ?? "").length).toBeGreaterThan(0);
+  });
+
+  it("returns URL for published versions", async () => {
+    const t = convexTest(schema, modules);
+
+    const storageId = await t.action(
+      internal._testInsertFakeFile._testStoreFakeFile,
+      { size: 100, contentType: "text/plain" },
+    );
+
+    const { versionId } = await t.mutation(api.assetManager.commitUpload, {
+      folderPath: "",
+      basename: "published-preview.txt",
+      storageId,
+      publish: true,
+    });
+
+    const result = await t.query(api.assetFsHttp.getVersionPreviewUrl, {
+      versionId,
+    });
+
+    expect(result).not.toBeNull();
+    expect(result?.url).toBeDefined();
+    expect((result?.url ?? "").length).toBeGreaterThan(0);
+  });
+
+  it("returns null for version without storage", async () => {
+    const t = convexTest(schema, modules);
+
+    // Create a version without storage (using commitVersion, not commitUpload)
+    const { versionId } = await t.mutation(api.assetManager.commitVersion, {
+      folderPath: "",
+      basename: "no-storage.txt",
+      publish: true,
+    });
+
+    const result = await t.query(api.assetFsHttp.getVersionPreviewUrl, {
+      versionId,
+    });
+
+    // Should return null because there's no storageId
+    expect(result).toBeNull();
+  });
+});
+
 describe("getVersionForServing (HTTP file serving logic)", () => {
-  describe("access control - only published versions are served", () => {
-    it("returns null for draft versions (not yet published)", async () => {
+  describe("access - any version with storage is served", () => {
+    it("serves draft versions (version IDs are opaque, no access restriction)", async () => {
       const t = convexTest(schema, modules);
 
-      // Create a small file and commit as draft (not published)
       const storageId = await t.action(
         internal._testInsertFakeFile._testStoreFakeFile,
         { size: 100, contentType: "text/plain" },
@@ -31,15 +154,16 @@ describe("getVersionForServing (HTTP file serving logic)", () => {
         publish: false, // Draft only
       });
 
-      // Try to serve the draft version
       const result = await t.query(api.assetFsHttp.getVersionForServing, {
         versionId,
       });
 
-      expect(result).toBeNull();
+      // Draft versions ARE served - knowing the version ID is sufficient
+      expect(result).not.toBeNull();
+      expect(result?.storageId).toEqual(storageId);
     });
 
-    it("returns null for archived versions (previously published, now superseded)", async () => {
+    it("serves archived versions (old links should not break)", async () => {
       const t = convexTest(schema, modules);
 
       // Create two versions - the first will be archived when second is published
@@ -67,15 +191,16 @@ describe("getVersionForServing (HTTP file serving logic)", () => {
         publish: true,
       });
 
-      // v1 is now archived - should not be servable
+      // v1 is now archived - should STILL be servable
       const result = await t.query(api.assetFsHttp.getVersionForServing, {
         versionId: v1.versionId,
       });
 
-      expect(result).toBeNull();
+      expect(result).not.toBeNull();
+      expect(result?.storageId).toEqual(s1);
     });
 
-    it("serves published versions successfully", async () => {
+    it("serves published versions", async () => {
       const t = convexTest(schema, modules);
 
       const storageId = await t.action(
@@ -96,6 +221,23 @@ describe("getVersionForServing (HTTP file serving logic)", () => {
 
       expect(result).not.toBeNull();
       expect(result?.storageId).toEqual(storageId);
+    });
+
+    it("returns null for versions without storage", async () => {
+      const t = convexTest(schema, modules);
+
+      // Create version without storage (commitVersion, not commitUpload)
+      const { versionId } = await t.mutation(api.assetManager.commitVersion, {
+        folderPath: "",
+        basename: "no-file.txt",
+        publish: true,
+      });
+
+      const result = await t.query(api.assetFsHttp.getVersionForServing, {
+        versionId,
+      });
+
+      expect(result).toBeNull();
     });
   });
 

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { convexTest } from "convex-test";
 import schema from "./schema";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { modules } from "./test.setup";
 
 describe("asset versions (logical, no storage yet)", () => {
@@ -297,5 +297,122 @@ describe("asset versions (logical, no storage yet)", () => {
     expect(published?.state).toBe("published");
     expect(published?.createdAt).toBeGreaterThan(0);
     expect(published?.publishedAt).toBeGreaterThan(0);
+  });
+
+  it("restoreVersion creates a new version from an old one, preserving history", async () => {
+    const t = convexTest(schema, modules);
+
+    // Create fake files for testing
+    const s1 = await t.action(internal._testInsertFakeFile._testStoreFakeFile, {
+      size: 100,
+      contentType: "image/png",
+    });
+    const s2 = await t.action(internal._testInsertFakeFile._testStoreFakeFile, {
+      size: 200,
+      contentType: "image/png",
+    });
+
+    // v1: initial published
+    const v1 = await t.mutation(api.assetManager.commitUpload, {
+      folderPath: "",
+      basename: "logo.png",
+      storageId: s1,
+      publish: true,
+      label: "Initial logo",
+    });
+
+    // v2: replacement
+    await t.mutation(api.assetManager.commitUpload, {
+      folderPath: "",
+      basename: "logo.png",
+      storageId: s2,
+      publish: true,
+      label: "New logo",
+    });
+
+    // Verify v1 is archived, v2 is published
+    let versions = await t.query(api.assetManager.getAssetVersions, {
+      folderPath: "",
+      basename: "logo.png",
+    });
+    expect(versions).toHaveLength(2);
+
+    let byVersion = Object.fromEntries(versions.map((v) => [v.version, v]));
+    expect(byVersion[1].state).toBe("archived");
+    expect(byVersion[2].state).toBe("published");
+
+    // Restore v1 - this should create v3 with same content as v1
+    const restored = await t.mutation(api.assetManager.restoreVersion, {
+      versionId: v1.versionId,
+    });
+
+    expect(restored.version).toBe(3);
+    expect(restored.restoredFromVersion).toBe(1);
+
+    // Check asset state
+    const asset = await t.query(api.assetManager.getAsset, {
+      folderPath: "",
+      basename: "logo.png",
+    });
+    expect(asset?.versionCounter).toBe(3);
+    expect(asset?.publishedVersionId).toEqual(restored.versionId);
+
+    // Check version history: v1 archived, v2 archived, v3 published
+    versions = await t.query(api.assetManager.getAssetVersions, {
+      folderPath: "",
+      basename: "logo.png",
+    });
+    expect(versions).toHaveLength(3);
+
+    byVersion = Object.fromEntries(versions.map((v) => [v.version, v]));
+    expect(byVersion[1].state).toBe("archived");
+    expect(byVersion[2].state).toBe("archived");
+    expect(byVersion[3].state).toBe("published");
+    expect(byVersion[3].label).toBe("Restored from v1");
+
+    // Verify v3 has same storageId as v1
+    expect(byVersion[3].storageId).toEqual(s1);
+  });
+
+  it("restoreVersion with custom label uses provided label", async () => {
+    const t = convexTest(schema, modules);
+
+    const s1 = await t.action(internal._testInsertFakeFile._testStoreFakeFile, {
+      size: 100,
+      contentType: "application/json",
+    });
+    const s2 = await t.action(internal._testInsertFakeFile._testStoreFakeFile, {
+      size: 200,
+      contentType: "application/json",
+    });
+
+    const v1 = await t.mutation(api.assetManager.commitUpload, {
+      folderPath: "",
+      basename: "config.json",
+      storageId: s1,
+      publish: true,
+      label: "Original",
+    });
+
+    await t.mutation(api.assetManager.commitUpload, {
+      folderPath: "",
+      basename: "config.json",
+      storageId: s2,
+      publish: true,
+      label: "Updated",
+    });
+
+    await t.mutation(api.assetManager.restoreVersion, {
+      versionId: v1.versionId,
+      label: "Rollback per marketing request",
+    });
+
+    const versions = await t.query(api.assetManager.getAssetVersions, {
+      folderPath: "",
+      basename: "config.json",
+    });
+
+    const v3 = versions.find((v) => v.version === 3);
+    expect(v3?.label).toBe("Rollback per marketing request");
   });
 });

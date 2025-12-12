@@ -76,6 +76,12 @@ export declare const components: {
           }
         | { cacheControl?: string; kind: "redirect"; location: string }
       >;
+      getVersionPreviewUrl: FunctionReference<
+        "query",
+        "internal",
+        { versionId: string },
+        null | { contentType?: string; size?: number; url: string }
+      >;
     };
     assetManager: {
       commitUpload: FunctionReference<
@@ -131,8 +137,10 @@ export declare const components: {
           basename: string;
           createdAt: number;
           createdBy?: string;
+          draftVersionId?: string;
           extra?: any;
           folderPath: string;
+          publishedVersionId?: string;
           updatedAt: number;
           updatedBy?: string;
           versionCounter: number;
@@ -306,6 +314,17 @@ export declare const components: {
         "internal",
         { basename: string; folderPath: string },
         any
+      >;
+      restoreVersion: FunctionReference<
+        "mutation",
+        "internal",
+        { label?: string; versionId: string },
+        {
+          assetId: string;
+          restoredFromVersion: number;
+          version: number;
+          versionId: string;
+        }
       >;
       updateFolder: FunctionReference<
         "mutation",
