@@ -4,15 +4,13 @@ import { query, mutation } from "./_generated/server";
 // Import the registered components entry point
 import { components } from "./_generated/api";
 
-// --- Wrappers for Asset Manager ---
+// --- Folder Operations ---
 
 export const listFolders = query({
   args: {
     parentPath: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Call the component's function
-    // Note: Ensure your component is named 'assetManager' in convex.config.ts
     return await ctx.runQuery(
       components.assetManager.assetManager.listFolders,
       args,
@@ -40,6 +38,113 @@ export const createFolderByName = mutation({
   handler: async (ctx, args) => {
     return await ctx.runMutation(
       components.assetManager.assetManager.createFolderByName,
+      args,
+    );
+  },
+});
+
+export const updateFolder = mutation({
+  args: {
+    path: v.string(),
+    name: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(
+      components.assetManager.assetManager.updateFolder,
+      args,
+    );
+  },
+});
+
+// --- Asset Operations ---
+
+export const listAssets = query({
+  args: {
+    folderPath: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(
+      components.assetManager.assetManager.listAssets,
+      args,
+    );
+  },
+});
+
+export const getAsset = query({
+  args: {
+    folderPath: v.string(),
+    basename: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(
+      components.assetManager.assetManager.getAsset,
+      args,
+    );
+  },
+});
+
+export const createAsset = mutation({
+  args: {
+    folderPath: v.string(),
+    basename: v.string(),
+    extra: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(
+      components.assetManager.assetManager.createAsset,
+      args,
+    );
+  },
+});
+
+// --- Version Operations ---
+
+export const getAssetVersions = query({
+  args: {
+    folderPath: v.string(),
+    basename: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(
+      components.assetManager.assetManager.getAssetVersions,
+      args,
+    );
+  },
+});
+
+export const getPublishedFile = query({
+  args: {
+    folderPath: v.string(),
+    basename: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(
+      components.assetManager.assetManager.getPublishedFile,
+      args,
+    );
+  },
+});
+
+export const listPublishedFilesInFolder = query({
+  args: {
+    folderPath: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(
+      components.assetManager.assetManager.listPublishedFilesInFolder,
+      args,
+    );
+  },
+});
+
+export const publishDraft = mutation({
+  args: {
+    folderPath: v.string(),
+    basename: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(
+      components.assetManager.assetManager.publishDraft,
       args,
     );
   },

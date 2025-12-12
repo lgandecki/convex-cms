@@ -171,8 +171,10 @@ export declare const components: {
             basename: string;
             createdAt: number;
             createdBy?: string;
+            draftVersionId?: string;
             extra?: any;
             folderPath: string;
+            publishedVersionId?: string;
             updatedAt: number;
             updatedBy?: string;
             versionCounter: number;
@@ -238,8 +240,10 @@ export declare const components: {
           basename: string;
           createdAt: number;
           createdBy?: string;
+          draftVersionId?: string;
           extra?: any;
           folderPath: string;
+          publishedVersionId?: string;
           updatedAt: number;
           updatedBy?: string;
           versionCounter: number;

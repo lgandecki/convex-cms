@@ -1,5 +1,10 @@
 // convex/assetFsHttp.ts
-import { action, internalAction, internalQuery, query } from "./_generated/server";
+import {
+  action,
+  internalAction,
+  internalQuery,
+  query,
+} from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
@@ -45,7 +50,6 @@ export const getVersionForServing = query({
   ),
   handler: async (ctx, { versionId }) => {
     const version = await ctx.db.get(versionId);
-    console.log("[getVersionForServing] version:", version);
     if (!version) return null;
     if (version.state !== "published") return null;
     if (!version.storageId) return null;

@@ -1,0 +1,465 @@
+import { useMemo, useState } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import {
+  Grid3X3,
+  List,
+  Search,
+  X,
+  Plus,
+  Upload,
+  Code,
+  FolderOpen,
+  Folder,
+  ChevronRight,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AssetCard, type AssetData } from "./AssetCard";
+import { AssetListRow } from "./AssetListRow";
+import { getContentTypeCategory } from "@/lib/utils";
+
+interface AssetListProps {
+  folderPath: string;
+  onAssetSelect: (asset: { folderPath: string; basename: string }) => void;
+  onFolderSelect: (path: string) => void;
+  onUploadNew: () => void;
+  onCreateAsset: () => void;
+  onShowSnippet: () => void;
+}
+
+interface FolderData {
+  _id: string;
+  path: string;
+  name: string;
+  _creationTime: number;
+}
+
+// Folder card for grid view
+function FolderGridItem({
+  folder,
+  onClick,
+}: {
+  folder: FolderData;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="group bg-card rounded-xl border border-border overflow-hidden hover:border-primary/50 hover:shadow-lg transition-all duration-200 text-left w-full"
+    >
+      <div className="aspect-video bg-muted flex items-center justify-center">
+        <Folder className="h-16 w-16 text-muted-foreground group-hover:text-primary transition-colors" />
+      </div>
+      <div className="p-3">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-sm truncate flex-1">
+            {folder.name}
+          </span>
+          <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
+        <Badge variant="secondary" className="mt-2 text-xs">
+          Folder
+        </Badge>
+      </div>
+    </button>
+  );
+}
+
+// Folder row for list view
+function FolderListItem({
+  folder,
+  onClick,
+}: {
+  folder: FolderData;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="group w-full flex items-center gap-4 px-4 py-3 border-b border-border hover:bg-accent/50 transition-colors text-left"
+    >
+      <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center shrink-0">
+        <Folder className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-medium text-sm truncate">{folder.name}</p>
+        <p className="text-xs text-muted-foreground">Folder</p>
+      </div>
+      <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+    </button>
+  );
+}
+
+type ContentTypeFilter =
+  | "all"
+  | "image"
+  | "audio"
+  | "video"
+  | "text"
+  | "json"
+  | "other";
+
+const typeFilters: { value: ContentTypeFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "image", label: "Images" },
+  { value: "audio", label: "Audio" },
+  { value: "video", label: "Video" },
+  { value: "text", label: "Text" },
+  { value: "json", label: "JSON" },
+  { value: "other", label: "Other" },
+];
+
+function SkeletonCard() {
+  return (
+    <div className="bg-card rounded-xl border border-border overflow-hidden">
+      <Skeleton className="aspect-video" />
+      <div className="p-3 space-y-2">
+        <Skeleton className="h-4 w-3/4" />
+        <div className="flex gap-1">
+          <Skeleton className="h-5 w-16" />
+          <Skeleton className="h-5 w-12" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SkeletonRow() {
+  return (
+    <div className="flex items-center gap-4 px-4 py-3 border-b border-border">
+      <Skeleton className="w-12 h-12 rounded-lg" />
+      <div className="flex-1 space-y-2">
+        <Skeleton className="h-4 w-48" />
+        <Skeleton className="h-4 w-16" />
+      </div>
+      <Skeleton className="h-4 w-20 hidden md:block" />
+      <Skeleton className="h-4 w-24 hidden sm:block" />
+      <Skeleton className="h-4 w-12 hidden lg:block" />
+      <Skeleton className="h-4 w-24 hidden lg:block" />
+    </div>
+  );
+}
+
+export function AssetList({
+  folderPath,
+  onAssetSelect,
+  onFolderSelect,
+  onUploadNew,
+  onCreateAsset,
+  onShowSnippet,
+}: AssetListProps) {
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState<ContentTypeFilter>("all");
+
+  // Query subfolders in the current folder
+  const subfolders = useQuery(api.cli.listFolders, { parentPath: folderPath });
+
+  // Query assets in the folder
+  const assets = useQuery(api.cli.listAssets, { folderPath });
+
+  // Query published files for metadata (contentType, size, url)
+  const publishedFiles = useQuery(api.cli.listPublishedFilesInFolder, {
+    folderPath,
+  });
+
+  // Create a lookup map for published info
+  const publishedInfoMap = useMemo(() => {
+    if (!publishedFiles) return new Map();
+    const map = new Map<
+      string,
+      { contentType?: string; size?: number; url?: string }
+    >();
+    for (const file of publishedFiles) {
+      map.set(file.basename, {
+        contentType: file.contentType,
+        size: file.size,
+        url: file.url,
+      });
+    }
+    return map;
+  }, [publishedFiles]);
+
+  // Filter subfolders by search query
+  const filteredFolders = useMemo(() => {
+    if (!subfolders) return [];
+    if (!searchQuery) return subfolders;
+    return subfolders.filter((folder) =>
+      folder.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [subfolders, searchQuery]);
+
+  // Filter assets
+  const filteredAssets = useMemo(() => {
+    if (!assets) return [];
+
+    return assets.filter((asset) => {
+      // Search filter
+      if (
+        searchQuery &&
+        !asset.basename.toLowerCase().includes(searchQuery.toLowerCase())
+      ) {
+        return false;
+      }
+
+      // Type filter
+      if (typeFilter !== "all") {
+        const info = publishedInfoMap.get(asset.basename);
+        const category = getContentTypeCategory(info?.contentType);
+        if (category !== typeFilter) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [assets, searchQuery, typeFilter, publishedInfoMap]);
+
+  const isLoading = assets === undefined || subfolders === undefined;
+  const isEmpty = !isLoading && filteredAssets.length === 0 && filteredFolders.length === 0;
+  const hasNoContent = !isLoading && assets?.length === 0 && subfolders?.length === 0;
+
+  return (
+    <div className="flex-1 flex flex-col h-full overflow-hidden">
+      {/* Header */}
+      <div className="p-4 border-b border-border space-y-3">
+        {/* Top row: path and actions */}
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <FolderOpen className="h-4 w-4" />
+            <span className="font-mono">
+              {folderPath || "(root)"}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={onShowSnippet}>
+              <Code className="h-4 w-4 mr-2" />
+              Snippet
+            </Button>
+            <Button variant="outline" size="sm" onClick={onCreateAsset}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Asset
+            </Button>
+            <Button size="sm" onClick={onUploadNew}>
+              <Upload className="h-4 w-4 mr-2" />
+              Upload
+            </Button>
+          </div>
+        </div>
+
+        {/* Bottom row: search, filters, view toggle */}
+        <div className="flex items-center gap-3">
+          {/* Search */}
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search assets..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 pr-9"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Type filters */}
+          <div className="flex items-center gap-1">
+            {typeFilters.map((filter) => (
+              <Button
+                key={filter.value}
+                variant={typeFilter === filter.value ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setTypeFilter(filter.value)}
+                className="text-xs"
+              >
+                {filter.label}
+              </Button>
+            ))}
+          </div>
+
+          {/* View mode toggle */}
+          <div className="flex items-center border border-border rounded-md">
+            <Button
+              variant={viewMode === "grid" ? "secondary" : "ghost"}
+              size="icon-sm"
+              onClick={() => setViewMode("grid")}
+              className="rounded-r-none"
+            >
+              <Grid3X3 className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={viewMode === "list" ? "secondary" : "ghost"}
+              size="icon-sm"
+              onClick={() => setViewMode("list")}
+              className="rounded-l-none"
+            >
+              <List className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Active filters */}
+        {(searchQuery || typeFilter !== "all") && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Filters:</span>
+            {searchQuery && (
+              <Badge
+                variant="secondary"
+                className="text-xs cursor-pointer"
+                onClick={() => setSearchQuery("")}
+              >
+                Search: {searchQuery}
+                <X className="h-3 w-3 ml-1" />
+              </Badge>
+            )}
+            {typeFilter !== "all" && (
+              <Badge
+                variant="secondary"
+                className="text-xs cursor-pointer"
+                onClick={() => setTypeFilter("all")}
+              >
+                Type: {typeFilter}
+                <X className="h-3 w-3 ml-1" />
+              </Badge>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Content */}
+      <ScrollArea className="flex-1">
+        {isLoading ? (
+          viewMode === "grid" ? (
+            <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              {[...Array(8)].map((_, i) => (
+                <SkeletonCard key={i} />
+              ))}
+            </div>
+          ) : (
+            <div>
+              {[...Array(8)].map((_, i) => (
+                <SkeletonRow key={i} />
+              ))}
+            </div>
+          )
+        ) : hasNoContent ? (
+          <div className="flex flex-col items-center justify-center h-64 gap-4">
+            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+              <FolderOpen className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <div className="text-center">
+              <h3 className="font-medium text-foreground">This folder is empty</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Upload an asset or create a subfolder to get started
+              </p>
+            </div>
+            <Button onClick={onUploadNew}>
+              <Upload className="h-4 w-4 mr-2" />
+              Upload Asset
+            </Button>
+          </div>
+        ) : isEmpty ? (
+          <div className="flex flex-col items-center justify-center h-64 gap-4">
+            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+              <Search className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <div className="text-center">
+              <h3 className="font-medium text-foreground">No matches found</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Try adjusting your search or filters
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSearchQuery("");
+                setTypeFilter("all");
+              }}
+            >
+              Clear Filters
+            </Button>
+          </div>
+        ) : viewMode === "grid" ? (
+          <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {/* Folders first */}
+            {filteredFolders.map((folder, index) => (
+              <div
+                key={folder._id}
+                className={cn("stagger-" + Math.min(index + 1, 6))}
+              >
+                <FolderGridItem
+                  folder={folder}
+                  onClick={() => onFolderSelect(folder.path)}
+                />
+              </div>
+            ))}
+            {/* Then assets */}
+            {filteredAssets.map((asset, index) => (
+              <div
+                key={asset._id}
+                className={cn("stagger-" + Math.min(index + filteredFolders.length + 1, 6))}
+              >
+                <AssetCard
+                  asset={asset as AssetData}
+                  publishedInfo={publishedInfoMap.get(asset.basename)}
+                  onClick={() =>
+                    onAssetSelect({
+                      folderPath: asset.folderPath,
+                      basename: asset.basename,
+                    })
+                  }
+                  onUpload={onUploadNew}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div>
+            {/* Folders first */}
+            {filteredFolders.map((folder, index) => (
+              <div
+                key={folder._id}
+                className={cn("stagger-" + Math.min(index + 1, 6))}
+              >
+                <FolderListItem
+                  folder={folder}
+                  onClick={() => onFolderSelect(folder.path)}
+                />
+              </div>
+            ))}
+            {/* Then assets */}
+            {filteredAssets.map((asset, index) => (
+              <div
+                key={asset._id}
+                className={cn("stagger-" + Math.min(index + filteredFolders.length + 1, 6))}
+              >
+                <AssetListRow
+                  asset={asset as AssetData}
+                  publishedInfo={publishedInfoMap.get(asset.basename)}
+                  onClick={() =>
+                    onAssetSelect({
+                      folderPath: asset.folderPath,
+                      basename: asset.basename,
+                    })
+                  }
+                  onUpload={onUploadNew}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </ScrollArea>
+    </div>
+  );
+}

@@ -143,6 +143,71 @@ describe("assets (logical layer)", () => {
       expect(asset.createdBy ?? null).toBe(asset.updatedBy ?? null);
     }
   });
+
+  it("listAssets includes publishedVersionId when asset has a published version", async () => {
+    const t = convexTest(schema, modules);
+
+    // Create asset and commit a published version using commitVersion
+    await t.mutation(api.assetManager.createAsset, {
+      folderPath: "",
+      basename: "test-with-version.txt",
+    });
+
+    // Commit a version with publish=true to set publishedVersionId
+    const result = await t.mutation(api.assetManager.commitVersion, {
+      folderPath: "",
+      basename: "test-with-version.txt",
+      publish: true,
+      label: "v1",
+    });
+
+    // List assets and verify publishedVersionId is included
+    const assets = await t.query(api.assetManager.listAssets, {
+      folderPath: "",
+    });
+
+    expect(assets).toHaveLength(1);
+    const asset = assets[0];
+    expect(asset.basename).toBe("test-with-version.txt");
+
+    // publishedVersionId should be present after a version is published
+    expect(asset.publishedVersionId).toBeDefined();
+    expect(asset.publishedVersionId).toBe(result.versionId);
+
+    // draftVersionId may be undefined or not present since we published directly
+    expect(asset.draftVersionId).toBeUndefined();
+  });
+
+  it("listAssets includes draftVersionId when asset has a draft version", async () => {
+    const t = convexTest(schema, modules);
+
+    // Create asset and commit a draft version
+    await t.mutation(api.assetManager.createAsset, {
+      folderPath: "",
+      basename: "test-with-draft.txt",
+    });
+
+    // Commit a version with publish=false to set draftVersionId
+    await t.mutation(api.assetManager.commitVersion, {
+      folderPath: "",
+      basename: "test-with-draft.txt",
+      publish: false,
+      label: "draft-v1",
+    });
+
+    // List assets and verify draftVersionId is included
+    const assets = await t.query(api.assetManager.listAssets, {
+      folderPath: "",
+    });
+
+    expect(assets).toHaveLength(1);
+    const asset = assets[0];
+    expect(asset.basename).toBe("test-with-draft.txt");
+
+    // draftVersionId should be present after a draft is created
+    expect(asset).toHaveProperty("draftVersionId");
+    expect(asset.draftVersionId).toBeDefined();
+  });
 });
 
 describe("getFolderWithAssets", () => {
