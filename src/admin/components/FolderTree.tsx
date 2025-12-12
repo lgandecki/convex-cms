@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "convex/react";
 import { useQuery as useTanstackQuery } from "@tanstack/react-query";
 import { api } from "../../../convex/_generated/api";
-import { queries } from "../../routes/index";
+import { queries } from "../../routes/admin";
 import {
   Folder,
   FolderOpen,

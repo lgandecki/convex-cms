@@ -1,0 +1,72 @@
+/* Odyssey HAL-9000 theme - scoped to .theme-odyssey */
+
+/* Override Tailwind theme variables within .theme-odyssey scope */
+.theme-odyssey {
+  /* Override semantic colors with HAL palette */
+  --color-background: var(--color-hal-black);
+  --color-foreground: var(--color-hal-silver);
+
+  --color-card: var(--color-hal-panel);
+  --color-card-foreground: var(--color-hal-silver);
+
+  --color-popover: var(--color-hal-panel);
+  --color-popover-foreground: var(--color-hal-silver);
+
+  --color-primary: var(--color-hal-red);
+  --color-primary-foreground: #ffffff;
+
+  --color-secondary: var(--color-hal-blue);
+  --color-secondary-foreground: #ffffff;
+
+  --color-muted: #2a2a2a;
+  --color-muted-foreground: #888888;
+
+  --color-accent: #333333;
+  --color-accent-foreground: #ffffff;
+
+  --color-destructive: #990000;
+  --color-destructive-foreground: #ffffff;
+
+  --color-border: #333333;
+  --color-input: #222222;
+  --color-ring: var(--color-hal-red);
+
+  /* Override border radius */
+  --radius: 4px;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+
+  /* Button-specific variables */
+  --button-outline: #444444;
+  --color-primary-border: var(--color-hal-red);
+  --color-secondary-border: var(--color-hal-blue);
+  --color-destructive-border: #990000;
+
+  /* Surface layers */
+  --color-surface-1: var(--color-hal-panel);
+  --color-surface-2: #222222;
+  --color-surface-3: #2a2a2a;
+
+  /* Apply base styles to the theme container */
+  font-family: var(--font-mono);
+  -webkit-font-smoothing: antialiased;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+}
+
+/* Border utility - only apply when explicitly using border-border class */
+.theme-odyssey .border-border {
+  border-color: var(--color-border);
+}
+
+/* Selection styling */
+.theme-odyssey ::selection {
+  background-color: var(--color-hal-red);
+  color: #ffffff;
+}
+
+/* Display font for headers */
+.theme-odyssey .font-display {
+  font-family: var(--font-display);
+}

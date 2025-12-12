@@ -43,6 +43,19 @@ export const createFolderByName = mutation({
   },
 });
 
+export const createFolderByPath = mutation({
+  args: {
+    path: v.string(),
+    name: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(
+      components.assetManager.assetManager.createFolderByPath,
+      args,
+    );
+  },
+});
+
 export const updateFolder = mutation({
   args: {
     path: v.string(),

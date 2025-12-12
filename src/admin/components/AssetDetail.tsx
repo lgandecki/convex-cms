@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useMutation } from "convex/react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../../convex/_generated/api";
-import { queries } from "../../routes/index";
+import { queries } from "../../routes/admin";
 import { formatDistanceToNow } from "date-fns";
 import {
   X,

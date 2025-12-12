@@ -2,7 +2,7 @@ import { useMemo, useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { queries } from "../../routes/index";
+import { queries } from "../../routes/admin";
 import {
   Grid3X3,
   List,
@@ -15,6 +15,8 @@ import {
   Folder,
   ChevronRight,
   Loader2,
+  Check,
+  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -118,6 +120,60 @@ const typeFilters: { value: ContentTypeFilter; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
+interface UploadItem {
+  id: string;
+  file: File;
+  targetFolder: string;
+  status: "pending" | "uploading" | "done" | "error";
+  error?: string;
+}
+
+// Helper to recursively read directory entries from drag-and-drop
+async function getFilesFromEntry(
+  entry: FileSystemEntry,
+  basePath: string
+): Promise<{ file: File; relativePath: string }[]> {
+  if (entry.isFile) {
+    const fileEntry = entry as FileSystemFileEntry;
+    const file = await new Promise<File>((resolve, reject) =>
+      fileEntry.file(resolve, reject)
+    );
+    return [{ file, relativePath: basePath }];
+  }
+
+  if (entry.isDirectory) {
+    const dirEntry = entry as FileSystemDirectoryEntry;
+    const reader = dirEntry.createReader();
+
+    // readEntries may not return all entries at once, so we need to call it repeatedly
+    const readAllEntries = async (): Promise<FileSystemEntry[]> => {
+      const entries: FileSystemEntry[] = [];
+      let batch: FileSystemEntry[];
+      do {
+        batch = await new Promise<FileSystemEntry[]>((resolve) =>
+          reader.readEntries(resolve)
+        );
+        entries.push(...batch);
+      } while (batch.length > 0);
+      return entries;
+    };
+
+    const entries = await readAllEntries();
+    const results: { file: File; relativePath: string }[] = [];
+
+    for (const childEntry of entries) {
+      const childPath = basePath
+        ? `${basePath}/${childEntry.name}`
+        : childEntry.name;
+      const childFiles = await getFilesFromEntry(childEntry, childPath);
+      results.push(...childFiles);
+    }
+    return results;
+  }
+
+  return [];
+}
+
 export function AssetList({
   folderPath,
   onAssetSelect,
@@ -131,52 +187,100 @@ export function AssetList({
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<ContentTypeFilter>("all");
   const [dragOver, setDragOver] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadingFileName, setUploadingFileName] = useState<string | null>(null);
+  const [uploadQueue, setUploadQueue] = useState<UploadItem[]>([]);
 
   // Upload mutations
   const generateUploadUrl = useMutation(api.generateUploadUrl.generateUploadUrl);
   const commitUpload = useMutation(api.generateUploadUrl.commitUpload);
+  const createFolderByPath = useMutation(api.cli.createFolderByPath);
 
-  // Handle file drop upload
-  const handleFileDrop = useCallback(async (file: File) => {
-    setIsUploading(true);
-    setUploadingFileName(file.name);
+  // Upload a single file
+  const uploadSingleFile = useCallback(
+    async (item: UploadItem) => {
+      setUploadQueue((q) =>
+        q.map((i) => (i.id === item.id ? { ...i, status: "uploading" } : i))
+      );
 
-    try {
-      // 1. Get upload URL
-      const uploadUrl = await generateUploadUrl();
+      try {
+        const uploadUrl = await generateUploadUrl();
+        const res = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": item.file.type },
+          body: item.file,
+        });
 
-      // 2. Upload file
-      const res = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
+        if (!res.ok) throw new Error("Upload failed");
 
-      if (!res.ok) {
-        throw new Error("Upload failed");
+        const { storageId } = await res.json();
+        await commitUpload({
+          folderPath: item.targetFolder,
+          basename: item.file.name,
+          storageId,
+          publish: true,
+        });
+
+        setUploadQueue((q) =>
+          q.map((i) => (i.id === item.id ? { ...i, status: "done" } : i))
+        );
+      } catch (error) {
+        setUploadQueue((q) =>
+          q.map((i) =>
+            i.id === item.id
+              ? { ...i, status: "error", error: String(error) }
+              : i
+          )
+        );
+      }
+    },
+    [generateUploadUrl, commitUpload]
+  );
+
+  // Process the upload queue with concurrency limit
+  const processUploadQueue = useCallback(
+    async (queue: UploadItem[]) => {
+      // Collect unique folder paths that need to be created
+      const uniqueFolders = [
+        ...new Set(
+          queue
+            .map((q) => q.targetFolder)
+            .filter((f) => f && f !== folderPath)
+        ),
+      ];
+      // Sort by depth so parents are created first
+      uniqueFolders.sort(
+        (a, b) => a.split("/").length - b.split("/").length
+      );
+
+      // Create folders first (sequentially to ensure parents exist)
+      for (const folder of uniqueFolders) {
+        try {
+          await createFolderByPath({ path: folder });
+        } catch {
+          // Folder may already exist, which is fine
+        }
       }
 
-      const { storageId } = await res.json();
+      // Upload files with concurrency limit
+      const CONCURRENT_LIMIT = 4;
+      const chunks: UploadItem[][] = [];
+      for (let i = 0; i < queue.length; i += CONCURRENT_LIMIT) {
+        chunks.push(queue.slice(i, i + CONCURRENT_LIMIT));
+      }
 
-      // 3. Commit the upload with original filename, published immediately
-      await commitUpload({
-        folderPath,
-        basename: file.name,
-        storageId,
-        publish: true,
-      });
+      for (const chunk of chunks) {
+        await Promise.all(chunk.map((item) => uploadSingleFile(item)));
+      }
 
-      toast.success(`"${file.name}" uploaded and published`);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Failed to upload file";
-      toast.error(message);
-    } finally {
-      setIsUploading(false);
-      setUploadingFileName(null);
-    }
-  }, [folderPath, generateUploadUrl, commitUpload]);
+      // Show completion toast
+      toast.success(
+        `Uploaded ${queue.length} file${queue.length > 1 ? "s" : ""}`
+      );
+
+      // Clear queue after delay to show completion state
+      setTimeout(() => setUploadQueue([]), 2000);
+    },
+    [folderPath, createFolderByPath, uploadSingleFile]
+  );
 
   // Drag and drop handlers
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -190,7 +294,6 @@ export function AssetList({
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    // Only set dragOver to false if we're leaving the container entirely
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX;
     const y = e.clientY;
@@ -199,17 +302,73 @@ export function AssetList({
     }
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(false);
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragOver(false);
 
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      // Upload first file (could extend to support multiple)
-      handleFileDrop(files[0]);
-    }
-  }, [handleFileDrop]);
+      const items = Array.from(e.dataTransfer.items);
+      const filesToUpload: UploadItem[] = [];
+
+      for (const item of items) {
+        if (item.kind !== "file") continue;
+
+        const entry = item.webkitGetAsEntry?.();
+
+        if (entry?.isDirectory) {
+          // Folder drop - traverse recursively
+          try {
+            const files = await getFilesFromEntry(entry, entry.name);
+            for (const { file, relativePath } of files) {
+              const pathParts = relativePath.split("/");
+              pathParts.pop(); // Remove filename
+              const subfolderPath =
+                pathParts.length > 0
+                  ? folderPath
+                    ? `${folderPath}/${pathParts.join("/")}`
+                    : pathParts.join("/")
+                  : folderPath;
+
+              filesToUpload.push({
+                id: crypto.randomUUID(),
+                file,
+                targetFolder: subfolderPath,
+                status: "pending",
+              });
+            }
+          } catch (err) {
+            toast.error(`Failed to read folder: ${entry.name}`);
+          }
+        } else {
+          // Regular file
+          const file = item.getAsFile();
+          if (file) {
+            filesToUpload.push({
+              id: crypto.randomUUID(),
+              file,
+              targetFolder: folderPath,
+              status: "pending",
+            });
+          }
+        }
+      }
+
+      // Enforce 50 file limit
+      if (filesToUpload.length > 50) {
+        toast.error(
+          `Too many files (${filesToUpload.length}). Maximum is 50 files at once.`
+        );
+        return;
+      }
+
+      if (filesToUpload.length > 0) {
+        setUploadQueue(filesToUpload);
+        processUploadQueue(filesToUpload);
+      }
+    },
+    [folderPath, processUploadQueue]
+  );
 
   // Non-suspense queries so SSR renders instantly with loading state
   const { data: subfolders, isLoading: subfoldersLoading } = useQuery(queries.folders(folderPath));
@@ -284,49 +443,75 @@ export function AssetList({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Drop zone overlay */}
-      {(dragOver || isUploading) && (
+      {/* Drop zone overlay - shown when dragging */}
+      {dragOver && uploadQueue.length === 0 && (
         <div className="absolute inset-0 z-50 pointer-events-none">
-          {/* Semi-transparent backdrop */}
           <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
-
-          {/* Edge highlight border */}
-          <div className={cn(
-            "absolute inset-3 rounded-xl border-2 border-dashed transition-colors",
-            isUploading ? "border-primary" : "border-primary animate-pulse"
-          )} />
-
-          {/* Corner accents */}
+          <div className="absolute inset-3 rounded-xl border-2 border-dashed border-primary animate-pulse" />
           <div className="absolute top-3 left-3 w-8 h-8 border-l-4 border-t-4 border-primary rounded-tl-xl" />
           <div className="absolute top-3 right-3 w-8 h-8 border-r-4 border-t-4 border-primary rounded-tr-xl" />
           <div className="absolute bottom-3 left-3 w-8 h-8 border-l-4 border-b-4 border-primary rounded-bl-xl" />
           <div className="absolute bottom-3 right-3 w-8 h-8 border-r-4 border-b-4 border-primary rounded-br-xl" />
-
-          {/* Center content */}
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-            {isUploading ? (
-              <>
-                <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Loader2 className="h-10 w-10 text-primary animate-spin" />
-                </div>
-                <div className="text-center">
-                  <p className="text-lg font-semibold text-foreground">Uploading...</p>
-                  <p className="text-sm text-muted-foreground mt-1">{uploadingFileName}</p>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Upload className="h-10 w-10 text-primary" />
-                </div>
-                <div className="text-center">
-                  <p className="text-lg font-semibold text-foreground">Drop file to upload</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    to <span className="font-mono text-primary">{folderPath || "(root)"}</span>
-                  </p>
-                </div>
-              </>
-            )}
+            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
+              <Upload className="h-10 w-10 text-primary" />
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-foreground">Drop files or folders to upload</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                to <span className="font-mono text-primary">{folderPath || "(root)"}</span>
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload progress overlay */}
+      {uploadQueue.length > 0 && (
+        <div className="absolute inset-0 z-50">
+          <div className="absolute inset-0 bg-background/90 backdrop-blur-sm" />
+          <div className="absolute inset-0 flex flex-col items-center justify-center p-8">
+            <div className="w-full max-w-md bg-card rounded-xl border border-border shadow-lg p-4">
+              <div className="flex items-center gap-3 mb-4">
+                {uploadQueue.every((f) => f.status === "done") ? (
+                  <Check className="h-5 w-5 text-success" />
+                ) : (
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                )}
+                <span className="font-medium">
+                  {uploadQueue.every((f) => f.status === "done")
+                    ? `Uploaded ${uploadQueue.length} file${uploadQueue.length > 1 ? "s" : ""}`
+                    : `Uploading ${uploadQueue.filter((f) => f.status === "done").length}/${uploadQueue.length} files`}
+                </span>
+              </div>
+              <div className="max-h-64 overflow-y-auto space-y-2">
+                {uploadQueue.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-2 text-sm py-1"
+                  >
+                    {item.status === "pending" && (
+                      <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+                    )}
+                    {item.status === "uploading" && (
+                      <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                    )}
+                    {item.status === "done" && (
+                      <Check className="h-4 w-4 text-success shrink-0" />
+                    )}
+                    {item.status === "error" && (
+                      <X className="h-4 w-4 text-destructive shrink-0" />
+                    )}
+                    <span className="truncate flex-1">{item.file.name}</span>
+                    {item.targetFolder !== folderPath && (
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        → {item.targetFolder.split("/").pop()}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}
