@@ -28,6 +28,7 @@ interface AssetListProps {
   onFolderSelect: (path: string) => void;
   onUploadNew: () => void;
   onCreateAsset: () => void;
+  onCreateFolder: () => void;
   onShowSnippet: () => void;
 }
 
@@ -119,6 +120,7 @@ export function AssetList({
   onFolderSelect,
   onUploadNew,
   onCreateAsset,
+  onCreateFolder,
   onShowSnippet,
 }: AssetListProps) {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -207,6 +209,10 @@ export function AssetList({
             <Button variant="outline" size="sm" onClick={onShowSnippet}>
               <Code className="h-4 w-4 mr-2" />
               Snippet
+            </Button>
+            <Button variant="outline" size="sm" onClick={onCreateFolder}>
+              <Folder className="h-4 w-4 mr-2" />
+              New Folder
             </Button>
             <Button variant="outline" size="sm" onClick={onCreateAsset}>
               <Plus className="h-4 w-4 mr-2" />

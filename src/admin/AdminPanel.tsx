@@ -77,6 +77,7 @@ export function AdminPanel({
                 // For now, just open upload dialog
                 handleUploadNew();
               }}
+              onCreateFolder={() => handleCreateFolder(folderPath)}
               onShowSnippet={() => setSnippetOpen(true)}
             />
           </Suspense>

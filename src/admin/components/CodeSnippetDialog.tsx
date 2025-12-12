@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Copy, Check } from "lucide-react";
+import { Highlight, themes } from "prism-react-renderer";
 
 interface CodeSnippetDialogProps {
   open: boolean;
@@ -29,9 +30,25 @@ function CodeBlock({ code }: { code: string }) {
 
   return (
     <div className="relative group">
-      <pre className="p-4 rounded-lg bg-surface-1 border border-border overflow-x-auto text-sm">
-        <code className="text-foreground">{code}</code>
-      </pre>
+      <Highlight theme={themes.nightOwl} code={code} language="tsx">
+        {({ style, tokens, getLineProps, getTokenProps }) => (
+          <pre
+            className="p-4 rounded-lg border border-border overflow-x-auto text-sm"
+            style={{ ...style, margin: 0 }}
+          >
+            {tokens.map((line, i) => (
+              <div key={i} {...getLineProps({ line })}>
+                <span className="inline-block w-8 text-right mr-4 select-none opacity-50 text-xs">
+                  {i + 1}
+                </span>
+                {line.map((token, key) => (
+                  <span key={key} {...getTokenProps({ token })} />
+                ))}
+              </div>
+            ))}
+          </pre>
+        )}
+      </Highlight>
       <Button
         variant="ghost"
         size="icon-sm"

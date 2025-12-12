@@ -55,8 +55,13 @@ function FolderItem({
   onCreateFolder,
   onRenameFolder,
 }: FolderItemProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
   const isSelected = selectedFolderPath === folder.path;
+  // Auto-expand if this folder is an ancestor of the selected path
+  const isAncestorOfSelected = selectedFolderPath.startsWith(folder.path + "/");
+  const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
+
+  // Expanded if: user explicitly expanded, OR is ancestor of selected, OR is selected
+  const isExpanded = userExpanded ?? (isAncestorOfSelected || isSelected);
 
   // Query for children when expanded
   const children = useQuery(
@@ -66,15 +71,11 @@ function FolderItem({
 
   const handleChevronClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsExpanded(!isExpanded);
+    setUserExpanded(!isExpanded);
   };
 
   const handleFolderClick = () => {
     onFolderSelect(folder.path);
-    // Auto-expand when selecting
-    if (!isExpanded) {
-      setIsExpanded(true);
-    }
   };
 
   return (
