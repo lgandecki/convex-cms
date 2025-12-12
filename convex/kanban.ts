@@ -2,6 +2,7 @@ import { components } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { slugify } from "./components/asset-manager/slugify";
+import { requireAuth } from "./authHelpers";
 
 const KANBAN_COLUMNS = ["backlog", "doing", "review", "done"] as const;
 type KanbanColumn = (typeof KANBAN_COLUMNS)[number];
@@ -18,6 +19,7 @@ export const createBoard = mutation({
     ),
   }),
   handler: async (ctx, { boardSlug }) => {
+    await requireAuth(ctx);
     // For now, assume boardSlug is already a slug.
     const basePath = `kanban/${boardSlug}`;
 
@@ -89,6 +91,7 @@ export const createCard = mutation({
     version: v.number(),
   }),
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     if (!KANBAN_COLUMNS.includes(args.column as KanbanColumn)) {
       throw new Error("Unknown column");
     }
@@ -179,6 +182,7 @@ export const updateCard = mutation({
     version: v.number(),
   }),
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     if (!KANBAN_COLUMNS.includes(args.column as KanbanColumn)) {
       throw new Error(`Invalid column: ${args.column}`);
     }
@@ -222,6 +226,7 @@ export const moveCard = mutation({
     basename: v.string(),
   }),
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     if (!KANBAN_COLUMNS.includes(args.fromColumn as KanbanColumn)) {
       throw new Error(`Invalid source column: ${args.fromColumn}`);
     }

@@ -1,12 +1,13 @@
 import { v } from "convex/values";
 import { mutation } from "./_generated/server";
 import { components } from "./_generated/api";
+import { requireAuth } from "./authHelpers";
 
 export const generateUploadUrl = mutation({
   args: {},
   returns: v.string(),
   handler: async (ctx) => {
-    // auth checks here if needed
+    await requireAuth(ctx);
     return await ctx.runMutation(
       components.assetManager.generateUploadUrl.generateUploadUrl,
       {},
@@ -31,6 +32,7 @@ export const commitUpload = mutation({
     version: v.number(),
   }),
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.runMutation(
       components.assetManager.assetManager.commitUpload,
       args,

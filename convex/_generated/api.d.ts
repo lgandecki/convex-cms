@@ -9,6 +9,7 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as authHelpers from "../authHelpers.js";
 import type * as cli from "../cli.js";
 import type * as generateUploadUrl from "../generateUploadUrl.js";
 import type * as http from "../http.js";
@@ -22,6 +23,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  authHelpers: typeof authHelpers;
   cli: typeof cli;
   generateUploadUrl: typeof generateUploadUrl;
   http: typeof http;

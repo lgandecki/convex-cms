@@ -3,8 +3,10 @@ import { useEffect, useRef } from "react";
 import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
+import { useConvexAuth } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { AdminPanel } from "../admin/AdminPanel";
+import { LoginModal } from "../admin/components/LoginModal";
 
 type SearchParams = {
   folder?: string;
@@ -87,9 +89,13 @@ function Admin() {
   const navigate = useNavigate();
   const router = useRouter();
   const hasPrefetched = useRef(false);
+  const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
 
-  // Get root folders for prefetching
-  const { data: rootFolders } = useQuery(queries.folders(""));
+  // Get root folders for prefetching (only when authenticated)
+  const { data: rootFolders } = useQuery({
+    ...queries.folders(""),
+    enabled: isAuthenticated,
+  });
 
   // "Simulate hover" - preload all folder routes after initial load
   useEffect(() => {
@@ -140,13 +146,16 @@ function Admin() {
   };
 
   return (
-    <AdminPanel
-      folderPath={folder ?? ""}
-      selectedAsset={asset ? { folderPath: folder ?? "", basename: asset } : null}
-      selectedVersionId={version ?? null}
-      onFolderSelect={handleFolderSelect}
-      onAssetSelect={handleAssetSelect}
-      onVersionSelect={handleVersionSelect}
-    />
+    <>
+      <LoginModal open={!isAuthLoading && !isAuthenticated} />
+      <AdminPanel
+        folderPath={folder ?? ""}
+        selectedAsset={asset ? { folderPath: folder ?? "", basename: asset } : null}
+        selectedVersionId={version ?? null}
+        onFolderSelect={handleFolderSelect}
+        onAssetSelect={handleAssetSelect}
+        onVersionSelect={handleVersionSelect}
+      />
+    </>
   );
 }

@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 // Import the registered components entry point
 import { components } from "./_generated/api";
+import { requireAuth } from "./authHelpers";
 
 // --- Folder Operations ---
 
@@ -36,6 +37,7 @@ export const createFolderByName = mutation({
     name: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.runMutation(
       components.assetManager.assetManager.createFolderByName,
       args,
@@ -49,6 +51,7 @@ export const createFolderByPath = mutation({
     name: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.runMutation(
       components.assetManager.assetManager.createFolderByPath,
       args,
@@ -62,6 +65,7 @@ export const updateFolder = mutation({
     name: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.runMutation(
       components.assetManager.assetManager.updateFolder,
       args,
@@ -103,6 +107,7 @@ export const createAsset = mutation({
     extra: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.runMutation(
       components.assetManager.assetManager.createAsset,
       args,
@@ -117,6 +122,7 @@ export const renameAsset = mutation({
     newBasename: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.runMutation(
       components.assetManager.assetManager.renameAsset,
       args,
@@ -170,6 +176,7 @@ export const publishDraft = mutation({
     basename: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.runMutation(
       components.assetManager.assetManager.publishDraft,
       args,
@@ -183,6 +190,7 @@ export const restoreVersion = mutation({
     label: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.runMutation(
       components.assetManager.assetManager.restoreVersion,
       args,
