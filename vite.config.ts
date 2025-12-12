@@ -9,7 +9,15 @@ import tsConfigPaths from "vite-tsconfig-paths";
 export default defineConfig({
   plugins: [
     tsConfigPaths(),
-    tanstackStart(),
+    tanstackStart({
+      prerender: {
+        enabled: true,
+        crawlLinks: false, // Don't auto-crawl, only prerender specified pages
+      },
+      pages: [
+        { path: "/" }, // Odyssey page - prerender with baked audio data
+      ],
+    }),
     react(),
     tailwindcss(),
   ],

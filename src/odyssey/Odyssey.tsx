@@ -122,6 +122,22 @@ interface Track {
   chapterName: string;
 }
 
+// Audio file type from Convex query
+interface AudioFile {
+  folderPath: string;
+  basename: string;
+  version: number;
+  storageId: string;
+  url: string;
+  contentType?: string;
+  size?: number;
+}
+
+interface OdysseyProps {
+  initialChapter1Files?: AudioFile[];
+  initialChapter2Files?: AudioFile[];
+}
+
 // Helper to build tracks based on which subchapters have multiple songs
 function buildTracks(subChaptersWithMultipleSongs: Set<number>): Track[] {
   const tracks: Track[] = [];
@@ -165,7 +181,10 @@ function buildTracks(subChaptersWithMultipleSongs: Set<number>): Track[] {
   return tracks;
 }
 
-export default function Odyssey() {
+export default function Odyssey({
+  initialChapter1Files,
+  initialChapter2Files,
+}: OdysseyProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTrackIdx, setCurrentTrackIdx] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -178,12 +197,17 @@ export default function Odyssey() {
   const allTracksRef = useRef<Track[]>([]);
 
   // Fetch audio files from each chapter folder
-  const chapter1Files = useQuery(api.cli.listPublishedFilesInFolder, {
+  // Use SSG initial data as fallback until Convex WebSocket connects
+  const chapter1FilesLive = useQuery(api.cli.listPublishedFilesInFolder, {
     folderPath: "odyssey/chapter-1",
   });
-  const chapter2Files = useQuery(api.cli.listPublishedFilesInFolder, {
+  const chapter2FilesLive = useQuery(api.cli.listPublishedFilesInFolder, {
     folderPath: "odyssey/chapter-2",
   });
+
+  // Use live data if available, otherwise fall back to SSG initial data
+  const chapter1Files = chapter1FilesLive ?? initialChapter1Files;
+  const chapter2Files = chapter2FilesLive ?? initialChapter2Files;
 
   // Build a map of track identifiers to audio URLs and detect which subchapters have multiple songs
   // Expected file naming: "{subChapterId}-{songIndex}.mp3" e.g., "1-1.mp3", "2-1.mp3", "2-2.mp3"
