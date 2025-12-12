@@ -1,6 +1,8 @@
 // src/routes/index.tsx
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect, useRef } from "react";
+import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
 import { convexQuery } from "@convex-dev/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../../convex/_generated/api";
 import { AdminPanel } from "../admin/AdminPanel";
 
@@ -49,7 +51,7 @@ export const Route = createFileRoute("/")({
     ];
 
     // Wait for folder data first
-    const [rootFolders] = await Promise.all(folderDataPromises);
+    const [rootFolders, currentSubfolders] = await Promise.all(folderDataPromises);
 
     // If asset is selected, wait for its details too (separate to avoid type mixing)
     if (asset) {
@@ -60,13 +62,18 @@ export const Route = createFileRoute("/")({
       ]);
     }
 
-    // Background prefetch: all other folders' data (fire and forget)
-    const otherPaths = (rootFolders as { path: string }[])
+    // Background prefetch: root folders + subfolders of current folder (fire and forget)
+    const rootPaths = (rootFolders as { path: string }[])
       .map((f) => f.path)
       .filter((path) => path !== folderPath);
 
+    const subfolderPaths = (currentSubfolders as { path: string }[])
+      .map((f) => f.path);
+
+    const allPathsToPrefetch = [...new Set([...rootPaths, ...subfolderPaths])];
+
     // Don't await - let these run in background
-    for (const path of otherPaths) {
+    for (const path of allPathsToPrefetch) {
       queryClient.prefetchQuery(queries.folders(path));
       queryClient.prefetchQuery(queries.assets(path));
       queryClient.prefetchQuery(queries.publishedFilesInFolder(path));
@@ -78,6 +85,27 @@ export const Route = createFileRoute("/")({
 function Home() {
   const { folder, asset, version } = Route.useSearch();
   const navigate = useNavigate();
+  const router = useRouter();
+  const hasPrefetched = useRef(false);
+
+  // Get root folders for prefetching
+  const { data: rootFolders } = useQuery(queries.folders(""));
+
+  // "Simulate hover" - preload all folder routes after initial load
+  useEffect(() => {
+    if (!rootFolders || hasPrefetched.current) return;
+    hasPrefetched.current = true;
+
+    const currentFolder = folder ?? "";
+    const otherPaths = rootFolders
+      .map((f: { path: string }) => f.path)
+      .filter((path: string) => path !== currentFolder);
+
+    // Preload routes for all other folders (triggers loader for each)
+    for (const path of otherPaths) {
+      router.preloadRoute({ to: "/", search: { folder: path || undefined } });
+    }
+  }, [rootFolders, folder, router]);
 
   const handleFolderSelect = (folderPath: string) => {
     void navigate({
