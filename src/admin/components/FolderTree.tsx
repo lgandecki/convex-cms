@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "convex/react";
+import { useQuery as useTanstackQuery } from "@tanstack/react-query";
 import { api } from "../../../convex/_generated/api";
+import { queries } from "../../routes/index";
 import {
   Folder,
   FolderOpen,
@@ -129,7 +131,7 @@ function FolderItem({
       </ContextMenu>
       {isExpanded && children && children.length > 0 && (
         <div className="animate-fade-in">
-          {children.map((child) => (
+          {children.map((child: FolderData) => (
             <FolderItem
               key={child._id}
               folder={child}
@@ -152,8 +154,12 @@ export function FolderTree({
   onCreateFolder,
   onRenameFolder,
 }: FolderTreeProps) {
-  // Query root folders
-  const rootFolders = useQuery(api.cli.listFolders, { parentPath: "" });
+  // Query root folders - non-suspense so SSR renders instantly with loading state
+  const { data: rootFolders, isLoading } = useTanstackQuery(queries.folders(""));
+
+  if (isLoading || !rootFolders) {
+    return <FolderTreeSkeleton />;
+  }
 
   return (
     <aside className="w-60 h-full bg-sidebar border-r border-sidebar-border flex flex-col shrink-0">
@@ -195,11 +201,7 @@ export function FolderTree({
                 <Plus className="h-3.5 w-3.5" />
               </Button>
             </div>
-            {rootFolders === undefined ? (
-              <div className="px-3 py-2">
-                <div className="h-4 w-24 animate-shimmer rounded" />
-              </div>
-            ) : rootFolders.length === 0 ? (
+            {rootFolders.length === 0 ? (
               <p className="text-xs text-muted-foreground px-3 py-2">
                 No folders yet. Click + to create one.
               </p>
@@ -220,6 +222,41 @@ export function FolderTree({
             )}
           </div>
         </ScrollArea>
+      </div>
+    </aside>
+  );
+}
+
+// Skeleton shown during direct navigation (before data loads)
+export function FolderTreeSkeleton() {
+  return (
+    <aside className="w-60 h-full bg-sidebar border-r border-sidebar-border flex flex-col shrink-0">
+      <div className="p-3 border-b border-sidebar-border">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 px-3">
+          Quick Filters
+        </p>
+        <div className="space-y-0.5">
+          <div className="w-full flex items-center gap-3 px-3 py-1.5">
+            <div className="h-4 w-4 rounded bg-muted animate-pulse" />
+            <div className="h-4 w-24 rounded bg-muted animate-pulse" />
+          </div>
+        </div>
+      </div>
+      <div className="flex-1 p-3">
+        <div className="flex items-center justify-between mb-2 px-3">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            Folders
+          </p>
+        </div>
+        <div className="space-y-2 px-3">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <div className="h-3 w-3 rounded bg-muted animate-pulse" />
+              <div className="h-4 w-4 rounded bg-muted animate-pulse" />
+              <div className="h-4 flex-1 rounded bg-muted animate-pulse" style={{ maxWidth: `${60 + i * 10}%` }} />
+            </div>
+          ))}
+        </div>
       </div>
     </aside>
   );

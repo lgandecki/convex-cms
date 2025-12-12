@@ -1,19 +1,9 @@
 "use client";
 
-import { Authenticated } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useState } from "react";
-import { AdminPanel } from "./admin/AdminPanel";
 
-export default function App() {
-  return (
-    <Authenticated>
-      <AdminPanel />
-    </Authenticated>
-  );
-}
-
-// Keeping SignInForm for potential future use
+// Note: App entry point is now in src/routes/index.tsx (TanStack Start)
 export function SignInForm() {
   const { signIn } = useAuthActions();
   const [flow, setFlow] = useState<"signIn" | "signUp">("signIn");

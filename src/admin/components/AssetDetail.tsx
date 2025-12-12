@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useEffect } from "react";
+import { useMutation } from "convex/react";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../../../convex/_generated/api";
-import { Id } from "../../../convex/_generated/dataModel";
+import { queries } from "../../routes/index";
 import { formatDistanceToNow } from "date-fns";
 import {
   X,
@@ -25,7 +26,6 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
   TooltipContent,
@@ -39,6 +39,8 @@ import { toast } from "sonner";
 interface AssetDetailProps {
   folderPath: string;
   basename: string;
+  selectedVersionId: string | null;
+  onVersionSelect: (versionId: string | null) => void;
   onClose: () => void;
   onUploadNew: () => void;
 }
@@ -60,40 +62,41 @@ function copyToClipboard(text: string, label: string) {
 export function AssetDetail({
   folderPath,
   basename,
+  selectedVersionId,
+  onVersionSelect,
   onClose,
   onUploadNew,
 }: AssetDetailProps) {
-  const asset = useQuery(api.cli.getAsset, { folderPath, basename });
-  const versions = useQuery(api.cli.getAssetVersions, { folderPath, basename });
-  const publishedFile = useQuery(api.cli.getPublishedFile, {
-    folderPath,
-    basename,
-  });
+  // Non-suspense queries so SSR renders instantly with loading state
+  const { data: asset, isLoading: assetLoading } = useQuery(queries.asset(folderPath, basename));
+  const { data: versions, isLoading: versionsLoading } = useQuery(queries.assetVersions(folderPath, basename));
+  const { data: publishedFile } = useQuery(queries.publishedFile(folderPath, basename));
 
   const publishDraft = useMutation(api.cli.publishDraft);
   const restoreVersion = useMutation(api.cli.restoreVersion);
 
-  // Track which version is selected for preview (defaults to published)
-  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
-
-  // Auto-select published version when it changes
+  // Auto-select published version when no version is selected in URL
+  // Must be called before any conditional returns (Rules of Hooks)
   useEffect(() => {
     if (asset?.publishedVersionId && !selectedVersionId) {
-      setSelectedVersionId(asset.publishedVersionId);
+      onVersionSelect(asset.publishedVersionId);
     }
-  }, [asset?.publishedVersionId, selectedVersionId]);
+  }, [asset?.publishedVersionId, selectedVersionId, onVersionSelect]);
 
-  const isLoading = asset === undefined;
-
-  // Get the selected version data
-  const selectedVersion = versions?.find((v) => v._id === selectedVersionId);
+  // Get the selected version data - compute before early return
+  const selectedVersion = versions?.find((v: { _id: string }) => v._id === selectedVersionId);
   const previewUrl = selectedVersion?.storageId
     ? getVersionUrl({ versionId: selectedVersion._id, basename })
     : publishedFile?.url;
   const previewContentType = selectedVersion?.contentType || publishedFile?.contentType;
-
   const category = getContentTypeCategory(previewContentType);
   const Icon = typeIcons[category];
+
+  const isLoading = assetLoading || versionsLoading;
+
+  if (isLoading || !asset || !versions) {
+    return <AssetDetailSkeleton />;
+  }
 
   const handlePublishDraft = async () => {
     try {
@@ -106,32 +109,15 @@ export function AssetDetail({
 
   const handleRestoreVersion = async (versionId: string, versionNumber: number) => {
     try {
-      const result = await restoreVersion({
-        versionId: versionId as Id<"assetManager:assetVersions">,
-      });
-      setSelectedVersionId(result.versionId);
+      const result = await restoreVersion({ versionId });
+      onVersionSelect(result.versionId);
       toast.success(`Restored version ${versionNumber} as version ${result.version}`);
     } catch (error) {
       toast.error("Failed to restore version");
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="w-[400px] h-full bg-card border-l border-border flex flex-col">
-        <div className="p-4 border-b border-border flex items-center justify-between">
-          <Skeleton className="h-6 w-48" />
-          <Skeleton className="h-8 w-8 rounded" />
-        </div>
-        <div className="p-4 space-y-4">
-          <Skeleton className="aspect-video w-full rounded-lg" />
-          <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-4 w-48" />
-        </div>
-      </div>
-    );
-  }
-
+  // With suspense, asset is always defined (null means not found)
   if (!asset) {
     return (
       <div className="w-[400px] h-full bg-card border-l border-border flex flex-col items-center justify-center p-8">
@@ -292,13 +278,7 @@ export function AssetDetail({
               <h3 className="text-sm font-medium text-foreground mb-3">
                 Version History
               </h3>
-              {versions === undefined ? (
-                <div className="space-y-2">
-                  {[...Array(3)].map((_, i) => (
-                    <Skeleton key={i} className="h-16 w-full rounded-lg" />
-                  ))}
-                </div>
-              ) : versions.length === 0 ? (
+              {versions.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   No versions yet. Upload a file to create the first version.
                 </p>
@@ -316,7 +296,7 @@ export function AssetDetail({
                     return (
                       <button
                         key={version._id}
-                        onClick={() => setSelectedVersionId(version._id)}
+                        onClick={() => onVersionSelect(version._id)}
                         className={cn(
                           "w-full text-left p-3 rounded-lg border transition-all",
                           isSelected
@@ -448,5 +428,69 @@ export function AssetDetail({
         </ScrollArea>
       </div>
     </TooltipProvider>
+  );
+}
+
+// Skeleton shown during direct navigation (before data loads)
+export function AssetDetailSkeleton() {
+  return (
+    <div className="w-[400px] h-full bg-card border-l border-border flex flex-col">
+      {/* Header */}
+      <div className="p-4 border-b border-border flex items-center justify-between">
+        <div className="flex-1 min-w-0 space-y-2">
+          <div className="h-5 w-32 rounded bg-muted animate-pulse" />
+          <div className="h-3 w-48 rounded bg-muted animate-pulse" />
+        </div>
+        <div className="h-8 w-8 rounded bg-muted animate-pulse" />
+      </div>
+      {/* Content */}
+      <div className="flex-1 p-4 space-y-6">
+        {/* Preview */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="h-4 w-16 rounded bg-muted animate-pulse" />
+            <div className="h-5 w-24 rounded bg-muted animate-pulse" />
+          </div>
+          <div className="aspect-video rounded-lg bg-muted animate-pulse" />
+        </div>
+        {/* Details */}
+        <div>
+          <div className="h-4 w-16 rounded bg-muted animate-pulse mb-3" />
+          <div className="space-y-2">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="flex justify-between">
+                <div className="h-4 w-16 rounded bg-muted animate-pulse" />
+                <div className="h-4 w-24 rounded bg-muted animate-pulse" />
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Actions */}
+        <div className="flex gap-2">
+          <div className="h-9 flex-1 rounded bg-muted animate-pulse" />
+          <div className="h-9 w-9 rounded bg-muted animate-pulse" />
+          <div className="h-9 w-9 rounded bg-muted animate-pulse" />
+        </div>
+        {/* Version History */}
+        <div>
+          <div className="h-4 w-28 rounded bg-muted animate-pulse mb-3" />
+          <div className="space-y-2">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="p-3 rounded-lg border border-border">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="h-4 w-4 rounded bg-muted animate-pulse" />
+                  <div className="h-4 w-20 rounded bg-muted animate-pulse" />
+                  <div className="h-4 w-16 rounded bg-muted animate-pulse" />
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="h-3 w-12 rounded bg-muted animate-pulse" />
+                  <div className="h-3 w-24 rounded bg-muted animate-pulse" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

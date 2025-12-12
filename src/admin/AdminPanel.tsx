@@ -1,22 +1,31 @@
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { Toaster } from "sonner";
-import { FolderTree } from "./components/FolderTree";
-import { AssetList } from "./components/AssetList";
-import { AssetDetail } from "./components/AssetDetail";
+import { FolderTree, FolderTreeSkeleton } from "./components/FolderTree";
+import { AssetList, AssetListSkeleton } from "./components/AssetList";
+import { AssetDetail, AssetDetailSkeleton } from "./components/AssetDetail";
 import { CreateFolderDialog } from "./components/CreateFolderDialog";
 import { UploadDialog } from "./components/UploadDialog";
 import { CodeSnippetDialog } from "./components/CodeSnippetDialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-export function AdminPanel() {
-  // Navigation state
-  const [selectedFolderPath, setSelectedFolderPath] = useState("");
-  const [selectedAsset, setSelectedAsset] = useState<{
-    folderPath: string;
-    basename: string;
-  } | null>(null);
+interface AdminPanelProps {
+  folderPath: string;
+  selectedAsset: { folderPath: string; basename: string } | null;
+  selectedVersionId: string | null;
+  onFolderSelect: (folderPath: string) => void;
+  onAssetSelect: (asset: { folderPath: string; basename: string } | null) => void;
+  onVersionSelect: (versionId: string | null) => void;
+}
 
-  // Dialog state
+export function AdminPanel({
+  folderPath,
+  selectedAsset,
+  selectedVersionId,
+  onFolderSelect,
+  onAssetSelect,
+  onVersionSelect,
+}: AdminPanelProps) {
+  // Dialog state (local, not URL-based)
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
   const [createFolderParentPath, setCreateFolderParentPath] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -39,12 +48,8 @@ export function AdminPanel() {
     setUploadOpen(true);
   };
 
-  const handleAssetSelect = (asset: { folderPath: string; basename: string }) => {
-    setSelectedAsset(asset);
-  };
-
   const handleCloseDetail = () => {
-    setSelectedAsset(null);
+    onAssetSelect(null);
   };
 
   return (
@@ -53,33 +58,41 @@ export function AdminPanel() {
         {/* Main Content */}
         <div className="flex-1 flex overflow-hidden">
           {/* Left: Folder Tree */}
-          <FolderTree
-            selectedFolderPath={selectedFolderPath}
-            onFolderSelect={setSelectedFolderPath}
-            onCreateFolder={handleCreateFolder}
-          />
+          <Suspense fallback={<FolderTreeSkeleton />}>
+            <FolderTree
+              selectedFolderPath={folderPath}
+              onFolderSelect={onFolderSelect}
+              onCreateFolder={handleCreateFolder}
+            />
+          </Suspense>
 
           {/* Middle: Asset List */}
-          <AssetList
-            folderPath={selectedFolderPath}
-            onAssetSelect={handleAssetSelect}
-            onFolderSelect={setSelectedFolderPath}
-            onUploadNew={handleUploadNew}
-            onCreateAsset={() => {
-              // For now, just open upload dialog
-              handleUploadNew();
-            }}
-            onShowSnippet={() => setSnippetOpen(true)}
-          />
+          <Suspense fallback={<AssetListSkeleton />}>
+            <AssetList
+              folderPath={folderPath}
+              onAssetSelect={onAssetSelect}
+              onFolderSelect={onFolderSelect}
+              onUploadNew={handleUploadNew}
+              onCreateAsset={() => {
+                // For now, just open upload dialog
+                handleUploadNew();
+              }}
+              onShowSnippet={() => setSnippetOpen(true)}
+            />
+          </Suspense>
 
           {/* Right: Asset Detail (conditional) */}
           {selectedAsset && (
-            <AssetDetail
-              folderPath={selectedAsset.folderPath}
-              basename={selectedAsset.basename}
-              onClose={handleCloseDetail}
-              onUploadNew={() => handleUploadNewVersion(selectedAsset.basename)}
-            />
+            <Suspense fallback={<AssetDetailSkeleton />}>
+              <AssetDetail
+                folderPath={selectedAsset.folderPath}
+                basename={selectedAsset.basename}
+                selectedVersionId={selectedVersionId}
+                onVersionSelect={onVersionSelect}
+                onClose={handleCloseDetail}
+                onUploadNew={() => handleUploadNewVersion(selectedAsset.basename)}
+              />
+            </Suspense>
           )}
         </div>
 
@@ -93,14 +106,14 @@ export function AdminPanel() {
         <UploadDialog
           open={uploadOpen}
           onOpenChange={setUploadOpen}
-          folderPath={selectedFolderPath}
+          folderPath={folderPath}
           existingBasename={uploadBasename}
         />
 
         <CodeSnippetDialog
           open={snippetOpen}
           onOpenChange={setSnippetOpen}
-          folderPath={selectedFolderPath}
+          folderPath={folderPath}
         />
 
         {/* Toast notifications */}

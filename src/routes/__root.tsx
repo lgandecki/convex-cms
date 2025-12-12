@@ -1,47 +1,54 @@
 // src/routes/__root.tsx
-/// <reference types="vite/client" />
 import type { ReactNode } from "react";
+import type { QueryClient } from "@tanstack/react-query";
 import {
+  createRootRouteWithContext,
   Outlet,
-  createRootRoute,
   HeadContent,
   Scripts,
+  useRouterState,
 } from "@tanstack/react-router";
-import { ConvexAuthProvider } from "@convex-dev/auth/react";
-import { ConvexReactClient } from "convex/react";
 import "../index.css";
 
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
-
-export const Route = createRootRoute({
+export const Route = createRootRouteWithContext<{
+  queryClient: QueryClient;
+}>()({
   head: () => ({
     meta: [
-      {
-        charSet: "utf-8",
-      },
-      {
-        name: "viewport",
-        content: "width=device-width, initial-scale=1",
-      },
-      {
-        title: "Asset Manager",
-      },
+      { charSet: "utf-8" },
+      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { title: "Asset Manager" },
     ],
   }),
+  notFoundComponent: () => <div>Route not found</div>,
   component: RootComponent,
 });
+
+function NavigationProgress() {
+  const isLoading = useRouterState({ select: (s) => s.isLoading });
+
+  if (!isLoading) return null;
+
+  return (
+    <div className="fixed top-0 left-0 right-0 z-50 h-0.5 bg-primary/20">
+      <div
+        className="h-full w-1/3 bg-primary animate-pulse rounded-r"
+        style={{ animation: "loading-progress 1s ease-in-out infinite" }}
+      />
+    </div>
+  );
+}
 
 function RootComponent() {
   return (
     <RootDocument>
-      <ConvexAuthProvider client={convex}>
-        <Outlet />
-      </ConvexAuthProvider>
+      <NavigationProgress />
+      <Outlet />
     </RootDocument>
   );
 }
 
-function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
+function RootDocument({ children }: { children: ReactNode }) {
   return (
     <html>
       <head>

@@ -9,7 +9,7 @@ import tsConfigPaths from "vite-tsconfig-paths";
 export default defineConfig({
   plugins: [
     tsConfigPaths(),
-    tanstackStart(), // Handles TanStack Start features like file-based routing
+    tanstackStart(),
     react(),
     tailwindcss(),
   ],

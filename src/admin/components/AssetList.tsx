@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "convex/react";
-import { api } from "../../../convex/_generated/api";
+import { useQuery } from "@tanstack/react-query";
+import { queries } from "../../routes/index";
 import {
   Grid3X3,
   List,
@@ -18,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skeleton } from "@/components/ui/skeleton";
 import { AssetCard, type AssetData } from "./AssetCard";
 import { AssetListRow } from "./AssetListRow";
 import { getContentTypeCategory } from "@/lib/utils";
@@ -114,37 +113,6 @@ const typeFilters: { value: ContentTypeFilter; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
-function SkeletonCard() {
-  return (
-    <div className="bg-card rounded-xl border border-border overflow-hidden">
-      <Skeleton className="aspect-video" />
-      <div className="p-3 space-y-2">
-        <Skeleton className="h-4 w-3/4" />
-        <div className="flex gap-1">
-          <Skeleton className="h-5 w-16" />
-          <Skeleton className="h-5 w-12" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SkeletonRow() {
-  return (
-    <div className="flex items-center gap-4 px-4 py-3 border-b border-border">
-      <Skeleton className="w-12 h-12 rounded-lg" />
-      <div className="flex-1 space-y-2">
-        <Skeleton className="h-4 w-48" />
-        <Skeleton className="h-4 w-16" />
-      </div>
-      <Skeleton className="h-4 w-20 hidden md:block" />
-      <Skeleton className="h-4 w-24 hidden sm:block" />
-      <Skeleton className="h-4 w-12 hidden lg:block" />
-      <Skeleton className="h-4 w-24 hidden lg:block" />
-    </div>
-  );
-}
-
 export function AssetList({
   folderPath,
   onAssetSelect,
@@ -157,24 +125,19 @@ export function AssetList({
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<ContentTypeFilter>("all");
 
-  // Query subfolders in the current folder
-  const subfolders = useQuery(api.cli.listFolders, { parentPath: folderPath });
+  // Non-suspense queries so SSR renders instantly with loading state
+  const { data: subfolders, isLoading: subfoldersLoading } = useQuery(queries.folders(folderPath));
+  const { data: assets, isLoading: assetsLoading } = useQuery(queries.assets(folderPath));
+  const { data: publishedFiles, isLoading: publishedLoading } = useQuery(queries.publishedFilesInFolder(folderPath));
 
-  // Query assets in the folder
-  const assets = useQuery(api.cli.listAssets, { folderPath });
-
-  // Query published files for metadata (contentType, size, url)
-  const publishedFiles = useQuery(api.cli.listPublishedFilesInFolder, {
-    folderPath,
-  });
-
+  // All hooks must be called before any conditional returns
   // Create a lookup map for published info
   const publishedInfoMap = useMemo(() => {
-    if (!publishedFiles) return new Map();
     const map = new Map<
       string,
       { contentType?: string; size?: number; url?: string }
     >();
+    if (!publishedFiles) return map;
     for (const file of publishedFiles) {
       map.set(file.basename, {
         contentType: file.contentType,
@@ -197,7 +160,6 @@ export function AssetList({
   // Filter assets
   const filteredAssets = useMemo(() => {
     if (!assets) return [];
-
     return assets.filter((asset) => {
       // Search filter
       if (
@@ -220,9 +182,14 @@ export function AssetList({
     });
   }, [assets, searchQuery, typeFilter, publishedInfoMap]);
 
-  const isLoading = assets === undefined || subfolders === undefined;
-  const isEmpty = !isLoading && filteredAssets.length === 0 && filteredFolders.length === 0;
-  const hasNoContent = !isLoading && assets?.length === 0 && subfolders?.length === 0;
+  const isLoading = subfoldersLoading || assetsLoading || publishedLoading;
+
+  if (isLoading || !subfolders || !assets) {
+    return <AssetListSkeleton />;
+  }
+
+  const isEmpty = filteredAssets.length === 0 && filteredFolders.length === 0;
+  const hasNoContent = assets.length === 0 && subfolders.length === 0;
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
@@ -339,21 +306,7 @@ export function AssetList({
 
       {/* Content */}
       <ScrollArea className="flex-1">
-        {isLoading ? (
-          viewMode === "grid" ? (
-            <div className="p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {[...Array(8)].map((_, i) => (
-                <SkeletonCard key={i} />
-              ))}
-            </div>
-          ) : (
-            <div>
-              {[...Array(8)].map((_, i) => (
-                <SkeletonRow key={i} />
-              ))}
-            </div>
-          )
-        ) : hasNoContent ? (
+        {hasNoContent ? (
           <div className="flex flex-col items-center justify-center h-64 gap-4">
             <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
               <FolderOpen className="h-8 w-8 text-muted-foreground" />
@@ -460,6 +413,53 @@ export function AssetList({
           </div>
         )}
       </ScrollArea>
+    </div>
+  );
+}
+
+// Skeleton shown during direct navigation (before data loads)
+export function AssetListSkeleton() {
+  return (
+    <div className="flex-1 flex flex-col h-full overflow-hidden">
+      {/* Header skeleton */}
+      <div className="p-4 border-b border-border space-y-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <div className="h-4 w-4 rounded bg-muted animate-pulse" />
+            <div className="h-4 w-32 rounded bg-muted animate-pulse" />
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-20 rounded bg-muted animate-pulse" />
+            <div className="h-8 w-24 rounded bg-muted animate-pulse" />
+            <div className="h-8 w-20 rounded bg-muted animate-pulse" />
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-64 rounded bg-muted animate-pulse" />
+          <div className="flex gap-1">
+            {[...Array(7)].map((_, i) => (
+              <div key={i} className="h-8 w-14 rounded bg-muted animate-pulse" />
+            ))}
+          </div>
+        </div>
+      </div>
+      {/* Grid skeleton */}
+      <div className="flex-1 p-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {[...Array(8)].map((_, i) => (
+            <div key={i} className="bg-card rounded-xl border border-border overflow-hidden">
+              <div className="aspect-video bg-muted animate-pulse" />
+              <div className="p-3 space-y-2">
+                <div className="h-4 w-3/4 rounded bg-muted animate-pulse" />
+                <div className="flex gap-1">
+                  <div className="h-5 w-16 rounded bg-muted animate-pulse" />
+                  <div className="h-5 w-12 rounded bg-muted animate-pulse" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
