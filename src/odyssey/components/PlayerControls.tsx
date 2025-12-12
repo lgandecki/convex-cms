@@ -9,7 +9,16 @@ interface PlayerControlsProps {
   onNext: () => void;
   onPrev: () => void;
   progress: number;
+  duration?: number;
+  onSeek?: (progress: number) => void;
   className?: string;
+}
+
+function formatTime(seconds: number): string {
+  if (!seconds || !isFinite(seconds)) return "00:00";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 }
 
 export function PlayerControls({
@@ -18,8 +27,12 @@ export function PlayerControls({
   onNext,
   onPrev,
   progress,
+  duration = 0,
+  onSeek,
   className,
 }: PlayerControlsProps) {
+  const currentTime = (progress / 100) * duration;
+  const remainingTime = duration - currentTime;
   return (
     <div
       className={cn(
@@ -29,12 +42,17 @@ export function PlayerControls({
     >
       {/* Progress Bar - Minimalist */}
       <div className="w-full flex items-center gap-2 [@media(min-height:800px)]:gap-3">
-        <span className="[@media(max-height:500px)]:text-[8px] text-[10px] [@media(min-height:800px)]:text-xs font-mono text-hal-red/50">
-          00:00
+        <span className="[@media(max-height:500px)]:text-[8px] text-[10px] [@media(min-height:800px)]:text-xs font-mono text-hal-red/50 min-w-[40px]">
+          {formatTime(currentTime)}
         </span>
-        <Slider value={[progress]} max={100} className="flex-1" />
-        <span className="[@media(max-height:500px)]:text-[8px] text-[10px] [@media(min-height:800px)]:text-xs font-mono text-hal-red/50">
-          -04:20
+        <Slider
+          value={[progress]}
+          max={100}
+          className="flex-1"
+          onValueChange={(value) => onSeek?.(value[0])}
+        />
+        <span className="[@media(max-height:500px)]:text-[8px] text-[10px] [@media(min-height:800px)]:text-xs font-mono text-hal-red/50 min-w-[40px] text-right">
+          -{formatTime(remainingTime)}
         </span>
       </div>
 

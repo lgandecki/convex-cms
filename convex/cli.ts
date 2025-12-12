@@ -110,6 +110,20 @@ export const createAsset = mutation({
   },
 });
 
+export const renameAsset = mutation({
+  args: {
+    folderPath: v.string(),
+    basename: v.string(),
+    newBasename: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(
+      components.assetManager.assetManager.renameAsset,
+      args,
+    );
+  },
+});
+
 // --- Version Operations ---
 
 export const getAssetVersions = query({

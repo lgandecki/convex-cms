@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { queries } from "../../routes/admin";
@@ -23,6 +23,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { AssetCard, type AssetData } from "./AssetCard";
 import { AssetListRow } from "./AssetListRow";
 import { getContentTypeCategory } from "@/lib/utils";
@@ -188,11 +196,18 @@ export function AssetList({
   const [typeFilter, setTypeFilter] = useState<ContentTypeFilter>("all");
   const [dragOver, setDragOver] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<UploadItem[]>([]);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [assetToRename, setAssetToRename] = useState<{ folderPath: string; basename: string } | null>(null);
+  const [newBasename, setNewBasename] = useState("");
+  const [isRenaming, setIsRenaming] = useState(false);
 
-  // Upload mutations
+  const queryClient = useQueryClient();
+
+  // Mutations
   const generateUploadUrl = useMutation(api.generateUploadUrl.generateUploadUrl);
   const commitUpload = useMutation(api.generateUploadUrl.commitUpload);
   const createFolderByPath = useMutation(api.cli.createFolderByPath);
+  const renameAssetMutation = useMutation(api.cli.renameAsset);
 
   // Upload a single file
   const uploadSingleFile = useCallback(
@@ -369,6 +384,39 @@ export function AssetList({
     },
     [folderPath, processUploadQueue]
   );
+
+  // Rename handlers
+  const handleRenameClick = useCallback((asset: { folderPath: string; basename: string }) => {
+    setAssetToRename(asset);
+    setNewBasename(asset.basename);
+    setRenameDialogOpen(true);
+  }, []);
+
+  const handleRenameSubmit = useCallback(async () => {
+    if (!assetToRename || !newBasename.trim()) return;
+    if (newBasename === assetToRename.basename) {
+      setRenameDialogOpen(false);
+      return;
+    }
+
+    setIsRenaming(true);
+    try {
+      await renameAssetMutation({
+        folderPath: assetToRename.folderPath,
+        basename: assetToRename.basename,
+        newBasename: newBasename.trim(),
+      });
+      toast.success(`Renamed to "${newBasename.trim()}"`);
+      // Invalidate queries to refresh the asset list
+      queryClient.invalidateQueries({ queryKey: ["assets", folderPath] });
+      queryClient.invalidateQueries({ queryKey: ["publishedFilesInFolder", folderPath] });
+      setRenameDialogOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to rename asset");
+    } finally {
+      setIsRenaming(false);
+    }
+  }, [assetToRename, newBasename, renameAssetMutation, queryClient, folderPath]);
 
   // Non-suspense queries so SSR renders instantly with loading state
   const { data: subfolders, isLoading: subfoldersLoading } = useQuery(queries.folders(folderPath));
@@ -700,6 +748,12 @@ export function AssetList({
                     })
                   }
                   onUpload={onUploadNew}
+                  onRename={() =>
+                    handleRenameClick({
+                      folderPath: asset.folderPath,
+                      basename: asset.basename,
+                    })
+                  }
                 />
               </div>
             ))}
@@ -734,12 +788,62 @@ export function AssetList({
                     })
                   }
                   onUpload={onUploadNew}
+                  onRename={() =>
+                    handleRenameClick({
+                      folderPath: asset.folderPath,
+                      basename: asset.basename,
+                    })
+                  }
                 />
               </div>
             ))}
           </div>
         )}
       </ScrollArea>
+
+      {/* Rename Dialog */}
+      <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rename Asset</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="newBasename">New name</Label>
+              <Input
+                id="newBasename"
+                value={newBasename}
+                onChange={(e) => setNewBasename(e.target.value)}
+                placeholder="Enter new filename"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !isRenaming) {
+                    handleRenameSubmit();
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRenameDialogOpen(false)}
+              disabled={isRenaming}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleRenameSubmit} disabled={isRenaming || !newBasename.trim()}>
+              {isRenaming ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Renaming...
+                </>
+              ) : (
+                "Rename"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

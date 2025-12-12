@@ -9,6 +9,7 @@ import {
   MoreVertical,
   Eye,
   Upload,
+  Pencil,
   CheckCircle,
   AlertCircle,
   Circle,
@@ -34,6 +35,7 @@ interface AssetListRowProps {
   } | null;
   onClick: () => void;
   onUpload?: () => void;
+  onRename?: () => void;
 }
 
 const typeIcons = {
@@ -70,6 +72,7 @@ export function AssetListRow({
   publishedInfo,
   onClick,
   onUpload,
+  onRename,
 }: AssetListRowProps) {
   const contentType = publishedInfo?.contentType;
   const category = getContentTypeCategory(contentType);
@@ -149,6 +152,17 @@ export function AssetListRow({
               <Eye className="h-4 w-4 mr-2" />
               View Details
             </DropdownMenuItem>
+            {onRename && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRename();
+                }}
+              >
+                <Pencil className="h-4 w-4 mr-2" />
+                Rename
+              </DropdownMenuItem>
+            )}
             {onUpload && (
               <DropdownMenuItem
                 onClick={(e) => {

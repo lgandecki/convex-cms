@@ -8,6 +8,7 @@ import {
   MoreVertical,
   Eye,
   Upload,
+  Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +41,7 @@ interface AssetCardProps {
   } | null;
   onClick: () => void;
   onUpload?: () => void;
+  onRename?: () => void;
 }
 
 const typeIcons = {
@@ -84,6 +86,7 @@ export function AssetCard({
   publishedInfo,
   onClick,
   onUpload,
+  onRename,
 }: AssetCardProps) {
   const contentType = publishedInfo?.contentType;
   const category = getContentTypeCategory(contentType);
@@ -141,6 +144,17 @@ export function AssetCard({
                 <Eye className="h-4 w-4 mr-2" />
                 View Details
               </DropdownMenuItem>
+              {onRename && (
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRename();
+                  }}
+                >
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Rename
+                </DropdownMenuItem>
+              )}
               {onUpload && (
                 <DropdownMenuItem
                   onClick={(e) => {

@@ -233,7 +233,9 @@ export declare const components: {
         Array<{
           createdAt: number;
           createdBy?: string;
+          fromBasename?: string;
           fromFolderPath?: string;
+          toBasename?: string;
           toFolderPath?: string;
           type: string;
         }>
@@ -314,6 +316,12 @@ export declare const components: {
         "internal",
         { basename: string; folderPath: string },
         any
+      >;
+      renameAsset: FunctionReference<
+        "mutation",
+        "internal",
+        { basename: string; folderPath: string; newBasename: string },
+        { assetId: string; newBasename: string; oldBasename: string }
       >;
       restoreVersion: FunctionReference<
         "mutation",

@@ -1,4 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
 import { HalEye } from "./components/HalEye";
 import { HalBadge } from "./components/HalBadge";
 import { SpeakerGrille } from "./components/SpeakerGrille";
@@ -16,7 +18,6 @@ interface Chapter {
 interface SubChapter {
   id: number;
   title: string;
-  additionalSong?: boolean;
 }
 
 const CHAPTERS: Chapter[] = [
@@ -26,7 +27,7 @@ const CHAPTERS: Chapter[] = [
     title: "PRIMEVAL NIGHT",
     subChapters: [
       { id: 1, title: "The Road to Extinction" },
-      { id: 2, title: "The New Rock", additionalSong: true },
+      { id: 2, title: "The New Rock" },
       { id: 3, title: "Academy" },
       { id: 4, title: "The Leopard" },
       { id: 5, title: "Encounter in the Dawn" },
@@ -111,22 +112,23 @@ const CHAPTERS: Chapter[] = [
   },
 ];
 
-// Helper to get all playable tracks (subchapters with IDs)
-// When a subchapter has additionalSong: true, it creates two tracks with Roman numeral suffixes
-const getAllTracks = () => {
-  const tracks: {
-    chapterId: number;
-    subChapterId: number;
-    songIndex: number;
-    title: string;
-    displayTitle: string;
-    chapterTitle: string;
-    chapterName: string;
-  }[] = [];
+interface Track {
+  chapterId: number;
+  subChapterId: number;
+  songIndex: number;
+  title: string;
+  displayTitle: string;
+  chapterTitle: string;
+  chapterName: string;
+}
+
+// Helper to build tracks based on which subchapters have multiple songs
+function buildTracks(subChaptersWithMultipleSongs: Set<number>): Track[] {
+  const tracks: Track[] = [];
   CHAPTERS.forEach((chapter) => {
     chapter.subChapters.forEach((sub) => {
       if (sub.id !== undefined) {
-        if (sub.additionalSong) {
+        if (subChaptersWithMultipleSongs.has(sub.id)) {
           // Create two tracks with Roman numeral suffixes
           tracks.push({
             chapterId: chapter.id,
@@ -161,45 +163,185 @@ const getAllTracks = () => {
     });
   });
   return tracks;
-};
-
-const ALL_TRACKS = getAllTracks();
+}
 
 export default function Odyssey() {
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTrackIdx, setCurrentTrackIdx] = useState(0); // Index into ALL_TRACKS
+  const [currentTrackIdx, setCurrentTrackIdx] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
   const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const currentTrack = ALL_TRACKS[currentTrackIdx];
+  // Refs to access current state in event listeners
+  const currentTrackIdxRef = useRef(currentTrackIdx);
+  const allTracksRef = useRef<Track[]>([]);
 
-  // Mock progress timer
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isPlaying) {
-      interval = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 100) {
-            setIsPlaying(false);
-            return 0;
+  // Fetch audio files from each chapter folder
+  const chapter1Files = useQuery(api.cli.listPublishedFilesInFolder, {
+    folderPath: "odyssey/chapter-1",
+  });
+  const chapter2Files = useQuery(api.cli.listPublishedFilesInFolder, {
+    folderPath: "odyssey/chapter-2",
+  });
+
+  // Build a map of track identifiers to audio URLs and detect which subchapters have multiple songs
+  // Expected file naming: "{subChapterId}-{songIndex}.mp3" e.g., "1-1.mp3", "2-1.mp3", "2-2.mp3"
+  const { audioUrlMap, subChaptersWithMultipleSongs } = useMemo(() => {
+    const map: Record<string, string> = {};
+    const songCounts: Record<number, Set<number>> = {};
+
+    const processFiles = (files: typeof chapter1Files) => {
+      if (!files) return;
+      for (const file of files) {
+        if (!file.contentType?.startsWith("audio/")) continue;
+        // Parse filename: expecting format like "1-1.mp3" or "2-2.mp3"
+        const match = file.basename.match(/^(\d+)-(\d+)\./);
+        if (match) {
+          const subChapterId = parseInt(match[1], 10);
+          const songIndex = parseInt(match[2], 10);
+          const key = `${subChapterId}-${songIndex}`;
+          map[key] = file.url;
+
+          // Track which song indices exist for each subchapter
+          if (!songCounts[subChapterId]) {
+            songCounts[subChapterId] = new Set();
           }
-          return prev + 0.2; // slow progress
-        });
-      }, 100);
-    }
-    return () => clearInterval(interval);
-  }, [isPlaying]);
+          songCounts[subChapterId].add(songIndex);
+        }
+      }
+    };
 
-  const handlePlayPause = () => setIsPlaying(!isPlaying);
-  const handleNext = () => {
-    setCurrentTrackIdx((prev) => (prev + 1) % ALL_TRACKS.length);
-    setProgress(0);
+    processFiles(chapter1Files);
+    processFiles(chapter2Files);
+
+    // Find subchapters that have both song 1 and song 2
+    const multipleSongs = new Set<number>();
+    for (const [subChapterId, songIndices] of Object.entries(songCounts)) {
+      if (songIndices.has(1) && songIndices.has(2)) {
+        multipleSongs.add(parseInt(subChapterId, 10));
+      }
+    }
+
+    return { audioUrlMap: map, subChaptersWithMultipleSongs: multipleSongs };
+  }, [chapter1Files, chapter2Files]);
+
+  // Build tracks list based on detected multiple songs
+  const allTracks = useMemo(
+    () => buildTracks(subChaptersWithMultipleSongs),
+    [subChaptersWithMultipleSongs]
+  );
+
+  // Keep refs in sync with state for use in event listeners
+  currentTrackIdxRef.current = currentTrackIdx;
+  allTracksRef.current = allTracks;
+
+  const currentTrack = allTracks[currentTrackIdx] || allTracks[0];
+
+  // Get current track's audio URL
+  const currentAudioUrl = useMemo(() => {
+    if (!currentTrack) return undefined;
+    const key = `${currentTrack.subChapterId}-${currentTrack.songIndex}`;
+    return audioUrlMap[key];
+  }, [currentTrack, audioUrlMap]);
+
+  // Initialize audio element
+  useEffect(() => {
+    if (!audioRef.current) {
+      audioRef.current = new Audio();
+      audioRef.current.addEventListener("timeupdate", () => {
+        if (audioRef.current && audioRef.current.duration) {
+          setProgress(
+            (audioRef.current.currentTime / audioRef.current.duration) * 100
+          );
+        }
+      });
+      audioRef.current.addEventListener("loadedmetadata", () => {
+        if (audioRef.current) {
+          setDuration(audioRef.current.duration);
+        }
+      });
+      audioRef.current.addEventListener("ended", () => {
+        // Auto-advance to next track within the same chapter, loop when chapter ends
+        const tracks = allTracksRef.current;
+        const currentIdx = currentTrackIdxRef.current;
+        const currentTrack = tracks[currentIdx];
+
+        if (!currentTrack || tracks.length === 0) return;
+
+        const nextIdx = (currentIdx + 1) % tracks.length;
+        const nextTrack = tracks[nextIdx];
+
+        // If next track is in the same chapter, advance to it
+        if (nextTrack && nextTrack.chapterId === currentTrack.chapterId) {
+          setCurrentTrackIdx(nextIdx);
+        } else {
+          // Find the first track of the current chapter and loop back
+          const firstTrackOfChapter = tracks.findIndex(
+            (t) => t.chapterId === currentTrack.chapterId
+          );
+          setCurrentTrackIdx(firstTrackOfChapter >= 0 ? firstTrackOfChapter : 0);
+        }
+      });
+    }
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    };
+  }, []);
+
+  // Update audio source when track changes
+  useEffect(() => {
+    if (audioRef.current && currentAudioUrl) {
+      const wasPlaying = isPlaying;
+      audioRef.current.src = currentAudioUrl;
+      audioRef.current.load();
+      setProgress(0);
+      setDuration(0);
+      if (wasPlaying) {
+        audioRef.current.play().catch(() => {});
+      }
+    }
+  }, [currentAudioUrl]);
+
+  // Handle play/pause state changes
+  useEffect(() => {
+    if (!audioRef.current) return;
+    if (isPlaying && currentAudioUrl) {
+      audioRef.current.play().catch(() => {
+        setIsPlaying(false);
+      });
+    } else {
+      audioRef.current.pause();
+    }
+  }, [isPlaying, currentAudioUrl]);
+
+  const handlePlayPause = () => {
+    if (!currentAudioUrl) {
+      // No audio available for this track, just toggle visual state
+      setIsPlaying(!isPlaying);
+      return;
+    }
+    setIsPlaying(!isPlaying);
   };
+
+  const handleNext = () => {
+    setCurrentTrackIdx((prev) => (prev + 1) % allTracks.length);
+  };
+
   const handlePrev = () => {
     setCurrentTrackIdx(
-      (prev) => (prev - 1 + ALL_TRACKS.length) % ALL_TRACKS.length,
+      (prev) => (prev - 1 + allTracks.length) % allTracks.length
     );
-    setProgress(0);
+  };
+
+  const handleSeek = (newProgress: number) => {
+    if (audioRef.current && audioRef.current.duration) {
+      audioRef.current.currentTime =
+        (newProgress / 100) * audioRef.current.duration;
+      setProgress(newProgress);
+    }
   };
 
   return (
@@ -215,7 +357,7 @@ export default function Odyssey() {
         currentTrack={currentTrack}
         currentTrackIdx={currentTrackIdx}
         chapters={CHAPTERS}
-        allTracks={ALL_TRACKS}
+        allTracks={allTracks}
         onSelectTrack={(trackIdx) => {
           setCurrentTrackIdx(trackIdx);
           setProgress(0);
@@ -253,7 +395,7 @@ export default function Odyssey() {
                 currentTrack={currentTrack}
                 currentTrackIdx={currentTrackIdx}
                 chapters={CHAPTERS}
-                allTracks={ALL_TRACKS}
+                allTracks={allTracks}
                 onSelectTrack={(trackIdx) => {
                   setCurrentTrackIdx(trackIdx);
                   setProgress(0);
@@ -269,6 +411,8 @@ export default function Odyssey() {
                 onNext={handleNext}
                 onPrev={handlePrev}
                 progress={progress}
+                duration={duration}
+                onSeek={handleSeek}
               />
             </div>
           </div>

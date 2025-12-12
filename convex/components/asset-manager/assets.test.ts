@@ -429,3 +429,206 @@ describe("getFolderWithAssets", () => {
     expect(asset._creationTime).toBeGreaterThan(0);
   });
 });
+
+describe("renameAsset", () => {
+  it("renames an asset's basename within the same folder", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(api.assetManager.createAsset, {
+      folderPath: "",
+      basename: "old-name.txt",
+    });
+
+    await t.mutation(api.assetManager.renameAsset, {
+      folderPath: "",
+      basename: "old-name.txt",
+      newBasename: "new-name.txt",
+    });
+
+    // Old name should not exist
+    const oldAsset = await t.query(api.assetManager.getAsset, {
+      folderPath: "",
+      basename: "old-name.txt",
+    });
+    expect(oldAsset).toBeNull();
+
+    // New name should exist
+    const newAsset = await t.query(api.assetManager.getAsset, {
+      folderPath: "",
+      basename: "new-name.txt",
+    });
+    expect(newAsset).not.toBeNull();
+    expect(newAsset?.basename).toBe("new-name.txt");
+  });
+
+  it("preserves asset versions and published state after rename", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(api.assetManager.createAsset, {
+      folderPath: "",
+      basename: "versioned.txt",
+    });
+
+    // Commit a published version
+    const result = await t.mutation(api.assetManager.commitVersion, {
+      folderPath: "",
+      basename: "versioned.txt",
+      publish: true,
+      label: "v1",
+    });
+
+    await t.mutation(api.assetManager.renameAsset, {
+      folderPath: "",
+      basename: "versioned.txt",
+      newBasename: "renamed-versioned.txt",
+    });
+
+    const asset = await t.query(api.assetManager.getAsset, {
+      folderPath: "",
+      basename: "renamed-versioned.txt",
+    });
+
+    expect(asset).not.toBeNull();
+    expect(asset?.publishedVersionId).toBe(result.versionId);
+    expect(asset?.versionCounter).toBe(1);
+  });
+
+  it("throws when asset does not exist", async () => {
+    const t = convexTest(schema, modules);
+
+    await expect(
+      t.mutation(api.assetManager.renameAsset, {
+        folderPath: "",
+        basename: "non-existent.txt",
+        newBasename: "new-name.txt",
+      })
+    ).rejects.toThrow(/not found/i);
+  });
+
+  it("throws when new basename already exists in the same folder", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(api.assetManager.createAsset, {
+      folderPath: "",
+      basename: "file-a.txt",
+    });
+
+    await t.mutation(api.assetManager.createAsset, {
+      folderPath: "",
+      basename: "file-b.txt",
+    });
+
+    await expect(
+      t.mutation(api.assetManager.renameAsset, {
+        folderPath: "",
+        basename: "file-a.txt",
+        newBasename: "file-b.txt",
+      })
+    ).rejects.toThrow(/already exists/i);
+  });
+
+  it("throws when new basename contains a slash", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(api.assetManager.createAsset, {
+      folderPath: "",
+      basename: "file.txt",
+    });
+
+    await expect(
+      t.mutation(api.assetManager.renameAsset, {
+        folderPath: "",
+        basename: "file.txt",
+        newBasename: "folder/file.txt",
+      })
+    ).rejects.toThrow(/cannot contain/i);
+  });
+
+  it("updates updatedAt and updatedBy on rename", async () => {
+    const t = convexTest(schema, modules);
+    const asUser = t.withIdentity({ tokenIdentifier: "user-1" });
+
+    const assetId = await asUser.mutation(api.assetManager.createAsset, {
+      folderPath: "",
+      basename: "original.txt",
+    });
+
+    const beforeAsset = await asUser.query(api.assetManager.getAsset, {
+      folderPath: "",
+      basename: "original.txt",
+    });
+
+    // Small delay to ensure different timestamp
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const asUser2 = t.withIdentity({ tokenIdentifier: "user-2" });
+    await asUser2.mutation(api.assetManager.renameAsset, {
+      folderPath: "",
+      basename: "original.txt",
+      newBasename: "renamed.txt",
+    });
+
+    const afterAsset = await t.query(api.assetManager.getAsset, {
+      folderPath: "",
+      basename: "renamed.txt",
+    });
+
+    expect(afterAsset?._id).toBe(assetId);
+    expect(afterAsset?.updatedAt).toBeGreaterThan(beforeAsset!.updatedAt);
+    expect(afterAsset?.updatedBy).toBe("user-2");
+    expect(afterAsset?.createdBy).toBe("user-1"); // createdBy unchanged
+  });
+
+  it("logs a rename event", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(api.assetManager.createAsset, {
+      folderPath: "docs",
+      basename: "readme.md",
+    });
+
+    await t.mutation(api.assetManager.renameAsset, {
+      folderPath: "docs",
+      basename: "readme.md",
+      newBasename: "README.md",
+    });
+
+    const events = await t.query(api.assetManager.listAssetEvents, {
+      folderPath: "docs",
+      basename: "README.md",
+    });
+
+    const renameEvent = events.find((e) => e.type === "rename");
+    expect(renameEvent).toBeDefined();
+    expect(renameEvent?.fromBasename).toBe("readme.md");
+    expect(renameEvent?.toBasename).toBe("README.md");
+  });
+
+  it("allows renaming in nested folders", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.mutation(api.assetManager.createFolderByPath, {
+      path: "deep/nested/folder",
+    });
+
+    await t.mutation(api.assetManager.createAsset, {
+      folderPath: "deep/nested/folder",
+      basename: "old.txt",
+    });
+
+    await t.mutation(api.assetManager.renameAsset, {
+      folderPath: "deep/nested/folder",
+      basename: "old.txt",
+      newBasename: "new.txt",
+    });
+
+    const asset = await t.query(api.assetManager.getAsset, {
+      folderPath: "deep/nested/folder",
+      basename: "new.txt",
+    });
+
+    expect(asset).not.toBeNull();
+    expect(asset?.folderPath).toBe("deep/nested/folder");
+    expect(asset?.basename).toBe("new.txt");
+  });
+});

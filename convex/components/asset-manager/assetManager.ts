@@ -997,6 +997,78 @@ export const moveAsset = mutation({
   },
 });
 
+export const renameAsset = mutation({
+  args: {
+    folderPath: v.string(),
+    basename: v.string(),
+    newBasename: v.string(),
+  },
+  returns: v.object({
+    assetId: v.id("assets"),
+    oldBasename: v.string(),
+    newBasename: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const folderPath = normalizeFolderPath(args.folderPath);
+    const now = Date.now();
+    const actorFields = await getActorFields(ctx);
+
+    // Validate new basename doesn't contain slashes
+    if (args.newBasename.includes("/")) {
+      throw new Error("Basename cannot contain '/' characters");
+    }
+
+    // Find the asset to rename
+    const asset = await ctx.db
+      .query("assets")
+      .withIndex("by_folder_basename", (q) =>
+        q.eq("folderPath", folderPath).eq("basename", args.basename)
+      )
+      .first();
+
+    if (!asset) {
+      throw new Error(`Asset not found at ${folderPath}/${args.basename}`);
+    }
+
+    // Check for conflict with new basename
+    const conflict = await ctx.db
+      .query("assets")
+      .withIndex("by_folder_basename", (q) =>
+        q.eq("folderPath", folderPath).eq("basename", args.newBasename)
+      )
+      .first();
+
+    if (conflict) {
+      throw new Error(
+        `Asset already exists at ${folderPath}/${args.newBasename}`
+      );
+    }
+
+    // Update asset basename
+    await ctx.db.patch(asset._id, {
+      basename: args.newBasename,
+      updatedAt: now,
+      updatedBy: actorFields.updatedBy,
+    });
+
+    // Log rename event
+    await ctx.db.insert("assetEvents", {
+      assetId: asset._id,
+      type: "rename",
+      fromBasename: args.basename,
+      toBasename: args.newBasename,
+      createdAt: now,
+      createdBy: actorFields.createdBy,
+    });
+
+    return {
+      assetId: asset._id,
+      oldBasename: args.basename,
+      newBasename: args.newBasename,
+    };
+  },
+});
+
 export const listAssetEvents = query({
   args: {
     folderPath: v.string(),
@@ -1007,6 +1079,8 @@ export const listAssetEvents = query({
       type: v.string(),
       fromFolderPath: v.optional(v.string()),
       toFolderPath: v.optional(v.string()),
+      fromBasename: v.optional(v.string()),
+      toBasename: v.optional(v.string()),
       createdAt: v.number(),
       createdBy: v.optional(v.string()),
     }),
@@ -1033,6 +1107,8 @@ export const listAssetEvents = query({
       type: e.type,
       fromFolderPath: e.fromFolderPath,
       toFolderPath: e.toFolderPath,
+      fromBasename: e.fromBasename,
+      toBasename: e.toBasename,
       createdAt: e.createdAt,
       createdBy: e.createdBy,
     }));

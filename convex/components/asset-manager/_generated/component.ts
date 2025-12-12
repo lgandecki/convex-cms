@@ -214,7 +214,9 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         Array<{
           createdAt: number;
           createdBy?: string;
+          fromBasename?: string;
           fromFolderPath?: string;
+          toBasename?: string;
           toFolderPath?: string;
           type: string;
         }>,
@@ -301,6 +303,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         { basename: string; folderPath: string },
         any,
+        Name
+      >;
+      renameAsset: FunctionReference<
+        "mutation",
+        "internal",
+        { basename: string; folderPath: string; newBasename: string },
+        { assetId: string; newBasename: string; oldBasename: string },
         Name
       >;
       restoreVersion: FunctionReference<

@@ -55,6 +55,8 @@ const schema = defineSchema({
     type: v.string(),
     fromFolderPath: v.optional(v.string()),
     toFolderPath: v.optional(v.string()),
+    fromBasename: v.optional(v.string()),
+    toBasename: v.optional(v.string()),
     createdAt: v.number(),
     createdBy: v.optional(v.string()),
   }).index("by_asset", ["assetId"]),
