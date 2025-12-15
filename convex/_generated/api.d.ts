@@ -11,8 +11,12 @@
 import type * as auth from "../auth.js";
 import type * as authHelpers from "../authHelpers.js";
 import type * as cli from "../cli.js";
+import type * as comicGeneration from "../comicGeneration.js";
+import type * as comicSubmissions from "../comicSubmissions.js";
+import type * as comics from "../comics.js";
 import type * as generateUploadUrl from "../generateUploadUrl.js";
 import type * as http from "../http.js";
+import type * as importHelpers from "../importHelpers.js";
 import type * as kanban from "../kanban.js";
 
 import type {
@@ -25,8 +29,12 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   authHelpers: typeof authHelpers;
   cli: typeof cli;
+  comicGeneration: typeof comicGeneration;
+  comicSubmissions: typeof comicSubmissions;
+  comics: typeof comics;
   generateUploadUrl: typeof generateUploadUrl;
   http: typeof http;
+  importHelpers: typeof importHelpers;
   kanban: typeof kanban;
 }>;
 
