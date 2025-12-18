@@ -2,8 +2,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { queries } from "@/lib/queries";
+import { getVersionUrl } from "@/lib/assetUrl";
 import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
+import { CdnImage } from "@/components/ui/cdn-image";
 
 type ImageType = "comic" | "superhero" | "both";
 
@@ -29,7 +31,8 @@ export function CharacterSelector({
       onChange({ ...selectedCharacters, [characterKey]: imageType });
     } else if (current === imageType) {
       // Same type selected -> deselect entirely
-      const { [characterKey]: _, ...rest } = selectedCharacters;
+      const { [characterKey]: _removed, ...rest } = selectedCharacters;
+      void _removed;
       onChange(rest);
     } else if (current === "both") {
       // Both selected -> deselect this type, keep the other
@@ -66,8 +69,14 @@ export function CharacterSelector({
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
         {characters.map((character) => {
           const name = character.metadata?.name ?? character.key;
-          const hasComic = !!character.comicImageUrl;
-          const hasSuperhero = !!character.superheroImageUrl;
+          const comicUrl = character.comicImage
+            ? getVersionUrl({ versionId: character.comicImage.versionId, basename: character.comicImage.basename })
+            : null;
+          const superheroUrl = character.superheroImage
+            ? getVersionUrl({ versionId: character.superheroImage.versionId, basename: character.superheroImage.basename })
+            : null;
+          const hasComic = !!comicUrl;
+          const hasSuperhero = !!superheroUrl;
 
           return (
             <div
@@ -91,11 +100,13 @@ export function CharacterSelector({
                       : "border-transparent hover:border-blue-500/50"
                   )}
                 >
-                  {character.comicImageUrl ? (
-                    <img
-                      src={character.comicImageUrl}
+                  {comicUrl ? (
+                    <CdnImage
+                      src={comicUrl}
                       alt={`${name} comic`}
-                      className="w-full h-full object-cover"
+                      fill
+                      className="object-cover"
+                      sizes="64px"
                     />
                   ) : (
                     <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">
@@ -128,11 +139,13 @@ export function CharacterSelector({
                       : "border-transparent hover:border-red-500/50"
                   )}
                 >
-                  {character.superheroImageUrl ? (
-                    <img
-                      src={character.superheroImageUrl}
+                  {superheroUrl ? (
+                    <CdnImage
+                      src={superheroUrl}
                       alt={`${name} superhero`}
-                      className="w-full h-full object-cover"
+                      fill
+                      className="object-cover"
+                      sizes="64px"
                     />
                   ) : (
                     <div className="w-full h-full bg-muted flex items-center justify-center text-xs text-muted-foreground">

@@ -1,9 +1,97 @@
 "use client";
 
+import { useState, useRef, useEffect } from "react";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Trash2, GripVertical, Check } from "lucide-react";
+import { Trash2, GripVertical, Check, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CdnImage } from "@/components/ui/cdn-image";
+
+// Inline editable text component
+export function EditableText({
+  value,
+  onChange,
+  placeholder,
+  label,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  label: string;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.focus();
+      textareaRef.current.select();
+    }
+  }, [isEditing]);
+
+  useEffect(() => {
+    setEditValue(value);
+  }, [value]);
+
+  const handleSave = () => {
+    onChange(editValue);
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setEditValue(value);
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      handleCancel();
+    } else if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSave();
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <div className="space-y-2">
+        <Label>{label}</Label>
+        <textarea
+          ref={textareaRef}
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={handleSave}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          rows={3}
+          className="flex min-h-[80px] w-full rounded-md border border-primary bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-y"
+        />
+        <p className="text-xs text-muted-foreground">
+          Press Enter to save, Shift+Enter for new line, Escape to cancel
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      {label && <Label className="text-muted-foreground">{label}</Label>}
+      <button
+        onClick={() => setIsEditing(true)}
+        className={cn(
+          "w-full text-left px-3 py-2 rounded-md border border-dashed border-border/50 hover:border-border hover:bg-muted/50 transition-colors group flex items-start gap-2",
+          !value && "text-muted-foreground italic"
+        )}
+      >
+        <span className="flex-1 whitespace-pre-wrap text-sm">
+          {value || placeholder}
+        </span>
+        <Pencil className="h-3 w-3 mt-1 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors shrink-0" />
+      </button>
+    </div>
+  );
+}
 
 export interface FrameCharacter {
   key: string;
@@ -62,7 +150,7 @@ export function FrameEditor({
 
   const toggleCharacterImage = (
     characterKey: string,
-    imageType: "comic" | "superhero"
+    imageType: "comic" | "superhero",
   ) => {
     const key = `${characterKey}:${imageType}`;
     const wasSelected = selectedImages.has(key);
@@ -79,7 +167,10 @@ export function FrameEditor({
     const newImageTypes: Record<string, "comic" | "superhero" | "both"> = {};
 
     for (const entry of selectedImages) {
-      const [charKey, type] = entry.split(":") as [string, "comic" | "superhero"];
+      const [charKey, type] = entry.split(":") as [
+        string,
+        "comic" | "superhero",
+      ];
       if (!newCharacters.includes(charKey)) {
         newCharacters.push(charKey);
       }
@@ -101,7 +192,10 @@ export function FrameEditor({
     });
   };
 
-  const isSelected = (characterKey: string, imageType: "comic" | "superhero") => {
+  const isSelected = (
+    characterKey: string,
+    imageType: "comic" | "superhero",
+  ) => {
     return selectedImages.has(`${characterKey}:${imageType}`);
   };
 
@@ -121,7 +215,7 @@ export function FrameEditor({
         <Button
           variant="ghost"
           size="icon-sm"
-          className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
+          className="ml-auto md:opacity-0 md:group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
           onClick={onDelete}
         >
           <Trash2 className="h-4 w-4" />
@@ -130,17 +224,12 @@ export function FrameEditor({
 
       <div className="space-y-4">
         {/* Scene description */}
-        <div className="space-y-2">
-          <Label htmlFor={`scene-${index}`}>Scene Description</Label>
-          <textarea
-            id={`scene-${index}`}
-            value={frame.scene}
-            onChange={(e) => onChange({ ...frame, scene: e.target.value })}
-            placeholder="Describe the visual scene..."
-            rows={2}
-            className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          />
-        </div>
+        <EditableText
+          value={frame.scene}
+          onChange={(value) => onChange({ ...frame, scene: value })}
+          placeholder="Describe the visual scene..."
+          label="Scene Description"
+        />
 
         {/* Characters in frame */}
         <div className="space-y-2">
@@ -150,7 +239,7 @@ export function FrameEditor({
               No characters available
             </span>
           ) : (
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
               {allCharacters.flatMap((char) => {
                 const images: React.ReactNode[] = [];
 
@@ -163,20 +252,22 @@ export function FrameEditor({
                         "relative aspect-square rounded-lg overflow-hidden transition-all",
                         isSelected(char.key, "comic")
                           ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
-                          : "opacity-40 hover:opacity-70"
+                          : "md:opacity-40 md:hover:opacity-70",
                       )}
                     >
-                      <img
+                      <CdnImage
                         src={char.comicImageUrl}
                         alt={`${char.name} comic`}
-                        className="w-full h-full object-cover"
+                        fill
+                        className="object-cover"
+                        sizes="64px"
                       />
                       {isSelected(char.key, "comic") && (
                         <div className="absolute inset-0 bg-primary/30 flex items-center justify-center">
                           <Check className="h-6 w-6 text-white drop-shadow-lg" />
                         </div>
                       )}
-                    </button>
+                    </button>,
                   );
                 }
 
@@ -184,25 +275,29 @@ export function FrameEditor({
                   images.push(
                     <button
                       key={`${char.key}-superhero`}
-                      onClick={() => toggleCharacterImage(char.key, "superhero")}
+                      onClick={() =>
+                        toggleCharacterImage(char.key, "superhero")
+                      }
                       className={cn(
                         "relative aspect-square rounded-lg overflow-hidden transition-all",
                         isSelected(char.key, "superhero")
                           ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
-                          : "opacity-40 hover:opacity-70"
+                          : "md:opacity-40 md:hover:opacity-70",
                       )}
                     >
-                      <img
+                      <CdnImage
                         src={char.superheroImageUrl}
                         alt={`${char.name} superhero`}
-                        className="w-full h-full object-cover"
+                        fill
+                        className="object-cover"
+                        sizes="64px"
                       />
                       {isSelected(char.key, "superhero") && (
                         <div className="absolute inset-0 bg-primary/30 flex items-center justify-center">
                           <Check className="h-6 w-6 text-white drop-shadow-lg" />
                         </div>
                       )}
-                    </button>
+                    </button>,
                   );
                 }
 
@@ -234,17 +329,12 @@ export function FrameEditor({
         </div>
 
         {/* Dialogue */}
-        <div className="space-y-2">
-          <Label htmlFor={`dialogue-${index}`}>Dialogue</Label>
-          <textarea
-            id={`dialogue-${index}`}
-            value={frame.dialogue}
-            onChange={(e) => onChange({ ...frame, dialogue: e.target.value })}
-            placeholder="What does the speaker say?"
-            rows={2}
-            className="flex min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-y"
-          />
-        </div>
+        <EditableText
+          value={frame.dialogue}
+          onChange={(value) => onChange({ ...frame, dialogue: value })}
+          placeholder="What does the speaker say?"
+          label="Dialogue"
+        />
       </div>
     </div>
   );

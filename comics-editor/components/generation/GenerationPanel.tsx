@@ -12,17 +12,22 @@ import { GenerationResult } from "./GenerationResult";
 import { Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Id } from "../../../convex/_generated/dataModel";
+import { useRouter } from "next/navigation";
 
 interface GenerationPanelProps {
   preselectedScenario?: string;
 }
 
 export function GenerationPanel({ preselectedScenario }: GenerationPanelProps) {
+  const router = useRouter();
   const { data: scenarios, isLoading: loadingScenarios } = useTanstackQuery(
     queries.scenarios()
   );
 
   const startGeneration = useMutation(api.comicGeneration.startGeneration);
+  const generateUploadUrl = useMutation(api.generateUploadUrl.generateUploadUrl);
+  const commitUpload = useMutation(api.generateUploadUrl.commitUpload);
+  const ensureStripFolder = useMutation(api.comics.ensureStripFolder);
 
   const [selectedScenario, setSelectedScenario] = useState<string>(
     preselectedScenario ?? ""
@@ -38,6 +43,7 @@ export function GenerationPanel({ preselectedScenario }: GenerationPanelProps) {
     null
   );
   const [starting, setStarting] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Watch submission status
   const submission = useQuery(
@@ -68,6 +74,58 @@ export function GenerationPanel({ preselectedScenario }: GenerationPanelProps) {
   };
 
   const handleNewGeneration = () => {
+    setSubmissionId(null);
+  };
+
+  const handleUseVersion = async () => {
+    if (!submission?.resultUrl || !selectedScenario) return;
+
+    setSaving(true);
+    try {
+      // 1. Fetch image from resultUrl
+      const response = await fetch(submission.resultUrl);
+      const blob = await response.blob();
+
+      // 2. Ensure the strip folder exists and get the correct basename
+      const { basename } = await ensureStripFolder({ scenarioName: selectedScenario });
+
+      // 3. Get upload URL from asset manager
+      const uploadUrl = await generateUploadUrl({});
+
+      // 4. Upload the blob
+      const uploadResponse = await fetch(uploadUrl, {
+        method: "POST",
+        body: blob,
+        headers: { "Content-Type": blob.type },
+      });
+      const { storageId } = await uploadResponse.json();
+
+      // 5. Commit to asset manager
+      await commitUpload({
+        folderPath: `comics/strips/${selectedScenario}`,
+        basename,
+        storageId,
+        publish: true,
+        label: `Generated at ${new Date().toISOString()}`,
+      });
+
+      toast.success("Comic strip saved!");
+      setSubmissionId(null);
+      router.push(`/scenarios/${encodeURIComponent(selectedScenario)}`);
+    } catch (error) {
+      console.error("Failed to save:", error);
+      toast.error("Failed to save comic strip");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTryAgain = () => {
+    // Start a new generation with the same scenario
+    handleGenerate();
+  };
+
+  const handleDiscard = () => {
     setSubmissionId(null);
   };
 
@@ -161,10 +219,9 @@ export function GenerationPanel({ preselectedScenario }: GenerationPanelProps) {
             <h2 className="text-lg font-semibold">
               Generating: {selectedScenario}
             </h2>
-            {(submission.status === "completed" ||
-              submission.status === "failed") && (
+            {submission.status === "failed" && (
               <Button variant="outline" size="sm" onClick={handleNewGeneration}>
-                New Generation
+                Try Again
               </Button>
             )}
           </div>
@@ -181,6 +238,10 @@ export function GenerationPanel({ preselectedScenario }: GenerationPanelProps) {
             <GenerationResult
               imageUrl={submission.resultUrl}
               scenarioName={selectedScenario}
+              onUseVersion={handleUseVersion}
+              onTryAgain={handleTryAgain}
+              onDiscard={handleDiscard}
+              isSaving={saving}
             />
           )}
         </div>

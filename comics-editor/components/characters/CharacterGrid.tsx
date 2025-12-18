@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { queries } from "@/lib/queries";
+import { getVersionUrl } from "@/lib/assetUrl";
 import { CharacterCard, CharacterCardSkeleton } from "./CharacterCard";
 import { CharacterEditDialog } from "./CharacterEditDialog";
 
@@ -14,10 +15,17 @@ interface CharacterMetadata {
   bio: string;
 }
 
+interface ImageRef {
+  versionId: string;
+  basename: string;
+}
+
 interface Character {
   key: string;
   folderPath: string;
   metadata: CharacterMetadata | null;
+  comicImage: ImageRef | null;
+  superheroImage: ImageRef | null;
   comicImageUrl: string | null;
   superheroImageUrl: string | null;
 }
@@ -54,19 +62,28 @@ export function CharacterGrid() {
 
   return (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-        {characters.map((character) => (
-          <CharacterCard
-            key={character.key}
-            characterKey={character.key}
-            name={character.metadata?.name ?? character.key}
-            organism={character.metadata?.organism}
-            archetype={character.metadata?.archetype}
-            comicImageUrl={character.comicImageUrl}
-            superheroImageUrl={character.superheroImageUrl}
-            onClick={() => handleCharacterClick(character)}
-          />
-        ))}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {characters.map((character) => {
+          const comicUrl = character.comicImage
+            ? getVersionUrl({ versionId: character.comicImage.versionId, basename: character.comicImage.basename })
+            : null;
+          const superheroUrl = character.superheroImage
+            ? getVersionUrl({ versionId: character.superheroImage.versionId, basename: character.superheroImage.basename })
+            : null;
+
+          return (
+            <CharacterCard
+              key={character.key}
+              characterKey={character.key}
+              name={character.metadata?.name ?? character.key}
+              organism={character.metadata?.organism}
+              archetype={character.metadata?.archetype}
+              comicImageUrl={comicUrl}
+              superheroImageUrl={superheroUrl}
+              onClick={() => handleCharacterClick(character)}
+            />
+          );
+        })}
       </div>
 
       {selectedCharacter && (
@@ -75,8 +92,12 @@ export function CharacterGrid() {
           onOpenChange={setEditDialogOpen}
           characterKey={selectedCharacter.key}
           initialMetadata={selectedCharacter.metadata}
-          comicImageUrl={selectedCharacter.comicImageUrl}
-          superheroImageUrl={selectedCharacter.superheroImageUrl}
+          comicImageUrl={selectedCharacter.comicImage
+            ? getVersionUrl({ versionId: selectedCharacter.comicImage.versionId, basename: selectedCharacter.comicImage.basename })
+            : null}
+          superheroImageUrl={selectedCharacter.superheroImage
+            ? getVersionUrl({ versionId: selectedCharacter.superheroImage.versionId, basename: selectedCharacter.superheroImage.basename })
+            : null}
         />
       )}
     </>
@@ -85,7 +106,7 @@ export function CharacterGrid() {
 
 export function CharacterGridSkeleton() {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
       {[...Array(8)].map((_, i) => (
         <CharacterCardSkeleton key={i} />
       ))}

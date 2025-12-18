@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <!-- Outer ring gradient -->
+    <radialGradient id="lensGradient" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#3a3a3a"/>
+      <stop offset="70%" stop-color="#1a1a1a"/>
+      <stop offset="100%" stop-color="#0a0a0a"/>
+    </radialGradient>
+    <!-- Red eye glow gradient -->
+    <radialGradient id="eyeGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ff3333"/>
+      <stop offset="50%" stop-color="#cc0000"/>
+      <stop offset="100%" stop-color="#880000"/>
+    </radialGradient>
+    <!-- Inner glow filter -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background circle (lens housing) -->
+  <circle cx="32" cy="32" r="30" fill="#0a0a0a" stroke="#2a2a2a" stroke-width="2"/>
+
+  <!-- Outer lens ring -->
+  <circle cx="32" cy="32" r="26" fill="url(#lensGradient)"/>
+
+  <!-- Dark inner ring -->
+  <circle cx="32" cy="32" r="18" fill="#111111"/>
+
+  <!-- Red glowing eye -->
+  <circle cx="32" cy="32" r="12" fill="url(#eyeGlow)" filter="url(#glow)"/>
+
+  <!-- Bright center highlight -->
+  <circle cx="32" cy="32" r="4" fill="#ff6666"/>
+
+  <!-- Small specular highlight -->
+  <circle cx="28" cy="28" r="2" fill="rgba(255,255,255,0.3)"/>
+</svg>

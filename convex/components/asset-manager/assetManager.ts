@@ -836,10 +836,12 @@ export const listPublishedFilesInFolder = query({
       folderPath: v.string(),
       basename: v.string(),
       version: v.number(),
+      versionId: v.id("assetVersions"),
       storageId: v.id("_storage"),
       url: v.string(),
       contentType: v.optional(v.string()),
       size: v.optional(v.number()),
+      publishedAt: v.optional(v.number()),
     }),
   ),
   handler: async (ctx, args) => {
@@ -865,10 +867,12 @@ export const listPublishedFilesInFolder = query({
         folderPath,
         basename: asset.basename,
         version: version.version,
+        versionId: asset.publishedVersionId,
         storageId: version.storageId,
         url,
         contentType: version.contentType,
         size: version.size,
+        publishedAt: version.publishedAt,
       });
     }
 

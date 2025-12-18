@@ -23,6 +23,10 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
     error: v.optional(v.string()),
     resultStorageId: v.optional(v.id("_storage")),
+    // Story generation results
+    storySlug: v.optional(v.string()),
+    storyName: v.optional(v.string()),
+    firstScenarioName: v.optional(v.string()),
   })
     .index("by_scenarioPath", ["scenarioPath"])
     .index("by_status", ["status"]),

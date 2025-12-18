@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { queries } from "@/lib/queries";
+import { getVersionUrl } from "@/lib/assetUrl";
 import { Button } from "@/components/ui/button";
 import {
   Download,
@@ -15,11 +16,13 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { CdnImage } from "@/components/ui/cdn-image";
 import { cn } from "@/lib/utils";
 
 interface Strip {
   scenarioName: string;
   basename: string;
+  versionId: string;
   url: string;
 }
 
@@ -78,9 +81,13 @@ export function GalleryGrid() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedIndex, goNext, goPrev]);
 
+  const getStripUrl = (strip: Strip) => {
+    return getVersionUrl({ versionId: strip.versionId, basename: strip.basename });
+  };
+
   const handleDownload = async (strip: Strip) => {
     try {
-      const response = await fetch(strip.url);
+      const response = await fetch(getStripUrl(strip));
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -159,11 +166,13 @@ export function GalleryGrid() {
                       "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background"
                     )}
                   >
-                    <div className="aspect-[9/16] overflow-hidden">
-                      <img
-                        src={strip.url}
+                    <div className="aspect-[9/16] overflow-hidden relative">
+                      <CdnImage
+                        src={getStripUrl(strip)}
                         alt={`${strip.scenarioName} - ${strip.basename}`}
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        fill
+                        className="object-cover transition-transform duration-300 group-hover:scale-105"
+                        sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
                       />
                     </div>
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-3">
@@ -243,7 +252,7 @@ export function GalleryGrid() {
                 className="text-white hover:bg-white/10"
                 onClick={(e) => {
                   e.stopPropagation();
-                  window.open(selectedStrip.url, "_blank");
+                  window.open(getStripUrl(selectedStrip), "_blank");
                 }}
               >
                 <ExternalLink className="h-4 w-4" />
@@ -281,13 +290,17 @@ export function GalleryGrid() {
 
             {/* Image */}
             <div
-              className="max-h-full max-w-full flex items-center justify-center"
+              className="max-h-full max-w-full flex items-center justify-center relative"
               onClick={(e) => e.stopPropagation()}
+              style={{ width: '100%', height: 'calc(100vh - 120px)' }}
             >
-              <img
-                src={selectedStrip.url}
+              <CdnImage
+                src={getStripUrl(selectedStrip)}
                 alt={`${selectedStrip.scenarioName} - ${selectedStrip.basename}`}
-                className="max-h-[calc(100vh-120px)] max-w-full object-contain rounded-lg"
+                fill
+                className="object-contain rounded-lg"
+                sizes="100vw"
+                priority
               />
             </div>
 

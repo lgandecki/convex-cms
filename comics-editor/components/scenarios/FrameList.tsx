@@ -19,17 +19,22 @@ export function FrameList({
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
-  const handleAddFrame = () => {
-    onChange([
-      ...frames,
-      {
-        scene: "",
-        characters: [],
-        speaker: "",
-        dialogue: "",
-        imageType: "comic",
-      },
-    ]);
+  const handleAddFrame = (insertAtIndex?: number) => {
+    const newFrame: Frame = {
+      scene: "",
+      characters: [],
+      speaker: "",
+      dialogue: "",
+      imageType: "comic",
+    };
+
+    if (insertAtIndex !== undefined) {
+      const newFrames = [...frames];
+      newFrames.splice(insertAtIndex, 0, newFrame);
+      onChange(newFrames);
+    } else {
+      onChange([...frames, newFrame]);
+    }
   };
 
   const handleUpdateFrame = useCallback(
@@ -92,7 +97,7 @@ export function FrameList({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium">Frames ({frames.length})</h3>
-        <Button size="sm" variant="outline" onClick={handleAddFrame}>
+        <Button size="sm" variant="outline" onClick={() => handleAddFrame()} className="hidden md:flex">
           <Plus className="h-4 w-4 mr-2" />
           Add Frame
         </Button>
@@ -103,7 +108,7 @@ export function FrameList({
           <p className="text-muted-foreground mb-4">
             No frames yet. Add your first frame to start building your comic.
           </p>
-          <Button onClick={handleAddFrame}>
+          <Button onClick={() => handleAddFrame()}>
             <Plus className="h-4 w-4 mr-2" />
             Add First Frame
           </Button>
@@ -136,6 +141,14 @@ export function FrameList({
               />
             </div>
           ))}
+          {/* Add frame button at the bottom */}
+          <button
+            onClick={() => handleAddFrame()}
+            className="w-full py-3 flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground border border-dashed border-border hover:border-primary rounded-lg transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Add Frame</span>
+          </button>
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import { CdnImage } from "@/components/ui/cdn-image";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 
@@ -37,7 +37,7 @@ export function CharacterCard({
       {/* Image area */}
       <div className="relative aspect-square overflow-hidden bg-muted">
         {comicImageUrl ? (
-          <Image
+          <CdnImage
             src={comicImageUrl}
             alt={name}
             fill
@@ -53,7 +53,7 @@ export function CharacterCard({
         {/* Superhero overlay on hover */}
         {superheroImageUrl && (
           <div className="absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-            <Image
+            <CdnImage
               src={superheroImageUrl}
               alt={`${name} superhero`}
               fill
