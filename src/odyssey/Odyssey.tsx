@@ -253,12 +253,14 @@ export default function Odyssey({
   // Build tracks list based on detected multiple songs
   const allTracks = useMemo(
     () => buildTracks(subChaptersWithMultipleSongs),
-    [subChaptersWithMultipleSongs]
+    [subChaptersWithMultipleSongs],
   );
 
   // Keep refs in sync with state for use in event listeners
-  currentTrackIdxRef.current = currentTrackIdx;
-  allTracksRef.current = allTracks;
+  useEffect(() => {
+    currentTrackIdxRef.current = currentTrackIdx;
+    allTracksRef.current = allTracks;
+  }, [currentTrackIdx, allTracks]);
 
   const currentTrack = allTracks[currentTrackIdx] || allTracks[0];
 
@@ -276,7 +278,7 @@ export default function Odyssey({
       audioRef.current.addEventListener("timeupdate", () => {
         if (audioRef.current && audioRef.current.duration) {
           setProgress(
-            (audioRef.current.currentTime / audioRef.current.duration) * 100
+            (audioRef.current.currentTime / audioRef.current.duration) * 100,
           );
         }
       });
@@ -302,9 +304,11 @@ export default function Odyssey({
         } else {
           // Find the first track of the current chapter and loop back
           const firstTrackOfChapter = tracks.findIndex(
-            (t) => t.chapterId === currentTrack.chapterId
+            (t) => t.chapterId === currentTrack.chapterId,
           );
-          setCurrentTrackIdx(firstTrackOfChapter >= 0 ? firstTrackOfChapter : 0);
+          setCurrentTrackIdx(
+            firstTrackOfChapter >= 0 ? firstTrackOfChapter : 0,
+          );
         }
       });
     }
@@ -321,8 +325,10 @@ export default function Odyssey({
       const wasPlaying = isPlaying;
       audioRef.current.src = currentAudioUrl;
       audioRef.current.load();
-      setProgress(0);
-      setDuration(0);
+      setTimeout(() => {
+        setProgress(0);
+        setDuration(0);
+      }, 0);
       if (wasPlaying) {
         audioRef.current.play().catch(() => {});
       }
@@ -356,7 +362,7 @@ export default function Odyssey({
 
   const handlePrev = () => {
     setCurrentTrackIdx(
-      (prev) => (prev - 1 + allTracks.length) % allTracks.length
+      (prev) => (prev - 1 + allTracks.length) % allTracks.length,
     );
   };
 

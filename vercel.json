@@ -1,5 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "bun install && cd comics-editor && bun install",
+  "buildCommand": "bunx convex codegen && cd comics-editor && bun run build",
+  "outputDirectory": "comics-editor/.next",
+  "framework": "nextjs",
   "rewrites": [
     {
       "source": "/cdn/:versionId/:filename",

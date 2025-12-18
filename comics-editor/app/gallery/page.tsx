@@ -8,10 +8,9 @@ export default function GalleryPage() {
     <div className="p-8">
       <div className="max-w-6xl mx-auto space-y-12">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Gallery</h1>
+          <h1 className="text-3xl font-bold mb-2">Recent Generations</h1>
           <p className="text-muted-foreground">
-            View all your generated comic strips. Click on any comic to view it
-            in full size.
+            View your recently generated comic strips and saved versions.
           </p>
         </div>
 

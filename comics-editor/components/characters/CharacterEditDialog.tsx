@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { CdnImage } from "@/components/ui/cdn-image";
 
 interface CharacterMetadata {
   name: string;
@@ -99,21 +100,29 @@ export function CharacterEditDialog({
           <div className="flex gap-4 pb-4 border-b border-border">
             {comicImageUrl && (
               <div className="flex flex-col items-center gap-1">
-                <img
-                  src={comicImageUrl}
-                  alt="Comic"
-                  className="w-20 h-20 rounded-lg object-cover"
-                />
+                <div className="relative w-20 h-20 rounded-lg overflow-hidden">
+                  <CdnImage
+                    src={comicImageUrl}
+                    alt="Comic"
+                    fill
+                    className="object-cover"
+                    sizes="80px"
+                  />
+                </div>
                 <span className="text-xs text-muted-foreground">Comic</span>
               </div>
             )}
             {superheroImageUrl && (
               <div className="flex flex-col items-center gap-1">
-                <img
-                  src={superheroImageUrl}
-                  alt="Superhero"
-                  className="w-20 h-20 rounded-lg object-cover"
-                />
+                <div className="relative w-20 h-20 rounded-lg overflow-hidden">
+                  <CdnImage
+                    src={superheroImageUrl}
+                    alt="Superhero"
+                    fill
+                    className="object-cover"
+                    sizes="80px"
+                  />
+                </div>
                 <span className="text-xs text-muted-foreground">Superhero</span>
               </div>
             )}

@@ -25,3 +25,4 @@ dist-ssr
 .claude
 asset-weaver/
 example-app/
+.vercel

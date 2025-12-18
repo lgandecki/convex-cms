@@ -12,8 +12,16 @@ import { Label } from "@/components/ui/label";
 import { FrameList } from "./FrameList";
 import { Frame, CharacterWithImages } from "./FrameEditor";
 import { toast } from "sonner";
-import { ArrowLeft, Save, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Copy } from "lucide-react";
 import Link from "next/link";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type ImageType = "comic" | "superhero" | "both";
 
@@ -44,6 +52,9 @@ export function ScenarioEditor({ scenarioName, isNew }: ScenarioEditorProps) {
   const { data: allCharacters } = useQuery(queries.characters());
 
   const [saving, setSaving] = useState(false);
+  const [cloning, setCloning] = useState(false);
+  const [showCloneDialog, setShowCloneDialog] = useState(false);
+  const [cloneName, setCloneName] = useState("");
   const [formData, setFormData] = useState<ScenarioData>({
     name: scenarioName ?? "",
     description: "",
@@ -140,6 +151,47 @@ export function ScenarioEditor({ scenarioName, isNew }: ScenarioEditorProps) {
     }
   };
 
+  const handleClone = async () => {
+    if (!cloneName.trim()) {
+      toast.error("Please enter a name for the cloned scenario");
+      return;
+    }
+
+    setCloning(true);
+
+    // Infer characterImages from frames
+    const characterImages = inferCharacterImages(formData.frames);
+
+    const clonedScenario = {
+      ...formData,
+      name: cloneName,
+      characterImages,
+    };
+
+    try {
+      await createScenario({
+        name: cloneName,
+        scenario: clonedScenario,
+      });
+      toast.success(`Scenario cloned as "${cloneName}"`);
+      setShowCloneDialog(false);
+      setCloneName("");
+      router.push(`/scenarios/${encodeURIComponent(cloneName)}`);
+    } catch (error) {
+      console.error(error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to clone scenario"
+      );
+    } finally {
+      setCloning(false);
+    }
+  };
+
+  const openCloneDialog = () => {
+    setCloneName(scenarioName ? `${scenarioName}-copy` : "");
+    setShowCloneDialog(true);
+  };
+
   if (loadingScenario && !isNew) {
     return <ScenarioEditorSkeleton />;
   }
@@ -163,14 +215,22 @@ export function ScenarioEditor({ scenarioName, isNew }: ScenarioEditorProps) {
             </p>
           </div>
         </div>
-        <Button onClick={handleSave} disabled={saving}>
-          {saving ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4 mr-2" />
+        <div className="flex gap-2">
+          {!isNew && scenarioName && (
+            <Button variant="outline" onClick={openCloneDialog}>
+              <Copy className="h-4 w-4 mr-2" />
+              Clone
+            </Button>
           )}
-          {isNew ? "Create" : "Save"}
-        </Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4 mr-2" />
+            )}
+            {isNew ? "Create" : "Save"}
+          </Button>
+        </div>
       </div>
 
       {/* Basic Info */}
@@ -226,6 +286,51 @@ export function ScenarioEditor({ scenarioName, isNew }: ScenarioEditorProps) {
           onChange={(frames) => setFormData({ ...formData, frames })}
         />
       </div>
+
+      {/* Clone Dialog */}
+      <Dialog open={showCloneDialog} onOpenChange={setShowCloneDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Clone Scenario</DialogTitle>
+            <DialogDescription>
+              Create a copy of this scenario with a new name.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="clone-name">New Scenario Name</Label>
+              <Input
+                id="clone-name"
+                value={cloneName}
+                onChange={(e) => setCloneName(e.target.value)}
+                placeholder="e.g., intro-part2"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    handleClone();
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowCloneDialog(false)}
+              disabled={cloning}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleClone} disabled={cloning}>
+              {cloning ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Copy className="h-4 w-4 mr-2" />
+              )}
+              Clone
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

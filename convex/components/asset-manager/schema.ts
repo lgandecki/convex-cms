@@ -43,6 +43,7 @@ const schema = defineSchema({
 
     createdAt: v.number(),
     createdBy: v.optional(v.string()),
+    updatedBy: v.optional(v.string()),
     publishedAt: v.optional(v.number()),
     publishedBy: v.optional(v.string()),
     archivedAt: v.optional(v.number()),

@@ -1,57 +1,56 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Download, ExternalLink } from "lucide-react";
+import { Check, RefreshCw, X, Loader2 } from "lucide-react";
+import { CdnImage } from "@/components/ui/cdn-image";
 
 interface GenerationResultProps {
   imageUrl: string;
   scenarioName: string;
+  onUseVersion: () => Promise<void>;
+  onTryAgain: () => void;
+  onDiscard: () => void;
+  isSaving?: boolean;
 }
 
 export function GenerationResult({
   imageUrl,
   scenarioName,
+  onUseVersion,
+  onTryAgain,
+  onDiscard,
+  isSaving,
 }: GenerationResultProps) {
-  const handleDownload = async () => {
-    try {
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${scenarioName}-comic.png`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error("Download failed:", error);
-    }
-  };
-
   return (
     <div className="space-y-4">
       {/* Image preview */}
-      <div className="relative rounded-lg overflow-hidden border bg-card">
-        <img
+      <div className="relative rounded-lg overflow-hidden border bg-card aspect-[9/16]">
+        <CdnImage
           src={imageUrl}
           alt={`Generated comic: ${scenarioName}`}
-          className="w-full h-auto"
+          fill
+          className="object-contain"
+          sizes="(max-width: 768px) 100vw, 50vw"
         />
       </div>
 
       {/* Actions */}
       <div className="flex gap-2">
-        <Button onClick={handleDownload} variant="default">
-          <Download className="h-4 w-4 mr-2" />
-          Download
+        <Button onClick={onUseVersion} disabled={isSaving}>
+          {isSaving ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Check className="h-4 w-4 mr-2" />
+          )}
+          {isSaving ? "Saving..." : "Keep"}
         </Button>
-        <Button
-          onClick={() => window.open(imageUrl, "_blank")}
-          variant="outline"
-        >
-          <ExternalLink className="h-4 w-4 mr-2" />
-          Open Full Size
+        <Button onClick={onTryAgain} variant="outline" disabled={isSaving}>
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Retry
+        </Button>
+        <Button onClick={onDiscard} variant="ghost" disabled={isSaving}>
+          <X className="h-4 w-4 mr-2" />
+          Reject
         </Button>
       </div>
     </div>

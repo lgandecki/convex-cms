@@ -18,6 +18,7 @@ import type * as generateUploadUrl from "../generateUploadUrl.js";
 import type * as http from "../http.js";
 import type * as importHelpers from "../importHelpers.js";
 import type * as kanban from "../kanban.js";
+import type * as prompts_storyContext from "../prompts/storyContext.js";
 
 import type {
   ApiFromModules,
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   importHelpers: typeof importHelpers;
   kanban: typeof kanban;
+  "prompts/storyContext": typeof prompts_storyContext;
 }>;
 
 /**
@@ -309,10 +311,12 @@ export declare const components: {
           basename: string;
           contentType?: string;
           folderPath: string;
+          publishedAt?: number;
           size?: number;
           storageId: string;
           url: string;
           version: number;
+          versionId: string;
         }>
       >;
       moveAsset: FunctionReference<

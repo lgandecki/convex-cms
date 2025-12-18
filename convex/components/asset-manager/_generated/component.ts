@@ -284,10 +284,12 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           basename: string;
           contentType?: string;
           folderPath: string;
+          publishedAt?: number;
           size?: number;
           storageId: string;
           url: string;
           version: number;
+          versionId: string;
         }>,
         Name
       >;

@@ -5,6 +5,7 @@ import { api } from "../../../convex/_generated/api";
 import { cn } from "@/lib/utils";
 import { Clock, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { CdnImage } from "@/components/ui/cdn-image";
 
 export function RecentSubmissions() {
   const submissions = useQuery(api.comicSubmissions.listRecent, { limit: 10 });
@@ -67,11 +68,13 @@ export function RecentSubmissions() {
 
             {/* Thumbnail */}
             {submission.status === "completed" && submission.resultUrl && (
-              <div className="w-12 h-20 rounded overflow-hidden bg-muted flex-shrink-0">
-                <img
+              <div className="relative w-12 h-20 rounded overflow-hidden bg-muted flex-shrink-0">
+                <CdnImage
                   src={submission.resultUrl}
                   alt="Result"
-                  className="w-full h-full object-cover"
+                  fill
+                  className="object-cover"
+                  sizes="48px"
                 />
               </div>
             )}
