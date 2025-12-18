@@ -1,7 +1,6 @@
 // convex/comicSubmissions.ts
 import { v } from "convex/values";
 import { query, mutation, internalMutation } from "./_generated/server";
-import { Id } from "./_generated/dataModel";
 
 // Create a new submission
 export const create = mutation({
@@ -68,7 +67,7 @@ export const getActiveByScenario = query({
     const submissions = await ctx.db
       .query("comicSubmissions")
       .withIndex("by_scenarioPath", (q) =>
-        q.eq("scenarioPath", args.scenarioPath)
+        q.eq("scenarioPath", args.scenarioPath),
       )
       .order("desc")
       .collect();
@@ -104,7 +103,7 @@ export const listByScenario = query({
     const submissions = await ctx.db
       .query("comicSubmissions")
       .withIndex("by_scenarioPath", (q) =>
-        q.eq("scenarioPath", args.scenarioPath)
+        q.eq("scenarioPath", args.scenarioPath),
       )
       .order("desc")
       .collect();
@@ -117,7 +116,7 @@ export const listByScenario = query({
           resultUrl = await ctx.storage.getUrl(sub.resultStorageId);
         }
         return { ...sub, resultUrl };
-      })
+      }),
     );
   },
 });
@@ -143,7 +142,7 @@ export const listRecent = query({
           resultUrl = await ctx.storage.getUrl(sub.resultStorageId);
         }
         return { ...sub, resultUrl };
-      })
+      }),
     );
   },
 });
