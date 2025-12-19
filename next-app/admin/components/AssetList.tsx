@@ -210,8 +210,8 @@ export function AssetList({
   const queryClient = useQueryClient();
 
   // Mutations
-  const generateUploadUrl = useMutation(api.generateUploadUrl.generateUploadUrl);
-  const commitUpload = useMutation(api.generateUploadUrl.commitUpload);
+  const startUpload = useMutation(api.generateUploadUrl.startUpload);
+  const finishUpload = useMutation(api.generateUploadUrl.finishUpload);
   const createFolderByPath = useMutation(api.cli.createFolderByPath);
   const renameAssetMutation = useMutation(api.cli.renameAsset);
 
@@ -223,21 +223,31 @@ export function AssetList({
       );
 
       try {
-        const uploadUrl = await generateUploadUrl();
+        // 1. Start upload
+        const { intentId, uploadUrl, backend } = await startUpload({
+          folderPath: item.targetFolder,
+          basename: item.file.name,
+          publish: true,
+        });
+
+        // 2. Upload file - R2 uses PUT, Convex uses POST
         const res = await fetch(uploadUrl, {
-          method: "POST",
+          method: backend === "r2" ? "PUT" : "POST",
           headers: { "Content-Type": item.file.type },
           body: item.file,
         });
 
-        if (!res.ok) throw new Error("Upload failed");
+        if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
 
-        const { storageId } = await res.json();
-        await commitUpload({
-          folderPath: item.targetFolder,
-          basename: item.file.name,
-          storageId,
-          publish: true,
+        // 3. Parse response - Convex returns JSON, R2 returns empty
+        const uploadResponse = backend === "convex" ? await res.json() : undefined;
+
+        // 4. Finish upload with file metadata
+        await finishUpload({
+          intentId,
+          uploadResponse,
+          size: item.file.size,
+          contentType: item.file.type,
         });
 
         setUploadQueue((q) =>
@@ -253,7 +263,7 @@ export function AssetList({
         );
       }
     },
-    [generateUploadUrl, commitUpload]
+    [startUpload, finishUpload]
   );
 
   // Process the upload queue with concurrency limit

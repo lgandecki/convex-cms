@@ -313,7 +313,7 @@ describe("asset versions (logical, no storage yet)", () => {
     });
 
     // v1: initial published
-    const v1 = await t.mutation(api.assetManager.commitUpload, {
+    const v1 = await t.mutation(api.assetManager.createVersionFromStorageId, {
       folderPath: "",
       basename: "logo.png",
       storageId: s1,
@@ -322,7 +322,7 @@ describe("asset versions (logical, no storage yet)", () => {
     });
 
     // v2: replacement
-    await t.mutation(api.assetManager.commitUpload, {
+    await t.mutation(api.assetManager.createVersionFromStorageId, {
       folderPath: "",
       basename: "logo.png",
       storageId: s2,
@@ -386,7 +386,7 @@ describe("asset versions (logical, no storage yet)", () => {
       contentType: "application/json",
     });
 
-    const v1 = await t.mutation(api.assetManager.commitUpload, {
+    const v1 = await t.mutation(api.assetManager.createVersionFromStorageId, {
       folderPath: "",
       basename: "config.json",
       storageId: s1,
@@ -394,7 +394,7 @@ describe("asset versions (logical, no storage yet)", () => {
       label: "Original",
     });
 
-    await t.mutation(api.assetManager.commitUpload, {
+    await t.mutation(api.assetManager.createVersionFromStorageId, {
       folderPath: "",
       basename: "config.json",
       storageId: s2,

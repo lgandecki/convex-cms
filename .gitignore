@@ -26,3 +26,5 @@ dist-ssr
 asset-weaver/
 example-app/
 .vercel
+comics-editor
+.env.local.odyssey

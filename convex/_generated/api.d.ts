@@ -75,6 +75,19 @@ export declare const components: {
         { storageId: string },
         null | ArrayBuffer
       >;
+      getPublishedFileForServing: FunctionReference<
+        "query",
+        "internal",
+        { basename: string; folderPath: string },
+        | null
+        | {
+            cacheControl?: string;
+            contentType?: string;
+            kind: "blob";
+            storageId: string;
+          }
+        | { cacheControl?: string; kind: "redirect"; location: string }
+      >;
       getVersionForServing: FunctionReference<
         "query",
         "internal",
@@ -96,19 +109,6 @@ export declare const components: {
       >;
     };
     assetManager: {
-      commitUpload: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          basename: string;
-          extra?: any;
-          folderPath: string;
-          label?: string;
-          publish?: boolean;
-          storageId: string;
-        },
-        { assetId: string; version: number; versionId: string }
-      >;
       commitVersion: FunctionReference<
         "mutation",
         "internal",
@@ -120,6 +120,16 @@ export declare const components: {
           publish?: boolean;
         },
         { assetId: string; version: number; versionId: string }
+      >;
+      configureStorageBackend: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          backend: "convex" | "r2";
+          r2KeyPrefix?: string;
+          r2PublicUrl?: string;
+        },
+        null
       >;
       createAsset: FunctionReference<
         "mutation",
@@ -138,6 +148,36 @@ export declare const components: {
         "internal",
         { extra?: any; name?: string; path: string },
         string
+      >;
+      createVersionFromStorageId: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          basename: string;
+          extra?: any;
+          folderPath: string;
+          label?: string;
+          publish?: boolean;
+          storageId: string;
+        },
+        { assetId: string; version: number; versionId: string }
+      >;
+      finishUpload: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          contentType?: string;
+          intentId: string;
+          r2Config?: {
+            R2_ACCESS_KEY_ID: string;
+            R2_BUCKET: string;
+            R2_ENDPOINT: string;
+            R2_SECRET_ACCESS_KEY: string;
+          };
+          size?: number;
+          uploadResponse?: any;
+        },
+        { assetId: string; version: number; versionId: string }
       >;
       getAsset: FunctionReference<
         "query",
@@ -224,10 +264,11 @@ export declare const components: {
           folderPath: string;
           publishedAt: number;
           publishedBy?: string;
+          r2Key?: string;
           sha256?: string;
           size?: number;
           state: "published";
-          storageId: string;
+          storageId?: string;
           url: string;
           version: number;
         }
@@ -237,6 +278,12 @@ export declare const components: {
         "internal",
         { basename: string; folderPath: string },
         any
+      >;
+      getStorageBackendConfig: FunctionReference<
+        "query",
+        "internal",
+        {},
+        "convex" | "r2"
       >;
       listAssetEvents: FunctionReference<
         "query",
@@ -312,8 +359,9 @@ export declare const components: {
           contentType?: string;
           folderPath: string;
           publishedAt?: number;
+          r2Key?: string;
           size?: number;
-          storageId: string;
+          storageId?: string;
           url: string;
           version: number;
           versionId: string;
@@ -348,6 +396,30 @@ export declare const components: {
           versionId: string;
         }
       >;
+      startUpload: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          basename: string;
+          extra?: any;
+          filename?: string;
+          folderPath: string;
+          label?: string;
+          publish?: boolean;
+          r2Config?: {
+            R2_ACCESS_KEY_ID: string;
+            R2_BUCKET: string;
+            R2_ENDPOINT: string;
+            R2_SECRET_ACCESS_KEY: string;
+          };
+        },
+        {
+          backend: "convex" | "r2";
+          intentId: string;
+          r2Key?: string;
+          uploadUrl: string;
+        }
+      >;
       updateFolder: FunctionReference<
         "mutation",
         "internal",
@@ -355,8 +427,22 @@ export declare const components: {
         any
       >;
     };
-    generateUploadUrl: {
-      generateUploadUrl: FunctionReference<"mutation", "internal", {}, string>;
+    signedUrl: {
+      getSignedUrl: FunctionReference<
+        "action",
+        "internal",
+        {
+          expiresIn?: number;
+          r2Config?: {
+            R2_ACCESS_KEY_ID: string;
+            R2_BUCKET: string;
+            R2_ENDPOINT: string;
+            R2_SECRET_ACCESS_KEY: string;
+          };
+          versionId: string;
+        },
+        null | string
+      >;
     };
   };
 };

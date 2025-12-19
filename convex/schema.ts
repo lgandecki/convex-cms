@@ -22,7 +22,8 @@ export default defineSchema({
     createdAt: v.number(),
     completedAt: v.optional(v.number()),
     error: v.optional(v.string()),
-    resultStorageId: v.optional(v.id("_storage")),
+    // Result reference - versionId from asset-manager component
+    resultVersionId: v.optional(v.string()),
     // Story generation results
     storySlug: v.optional(v.string()),
     storyName: v.optional(v.string()),

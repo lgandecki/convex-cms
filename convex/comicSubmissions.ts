@@ -1,6 +1,20 @@
 // convex/comicSubmissions.ts
 import { v } from "convex/values";
 import { query, mutation, internalMutation } from "./_generated/server";
+import { components } from "./_generated/api";
+
+// Helper to get result URL from versionId via asset-manager component
+async function getResultUrl(
+  ctx: { runQuery: any },
+  versionId: string | undefined
+): Promise<string | null> {
+  if (!versionId) return null;
+  const result = await ctx.runQuery(
+    components.assetManager.assetFsHttp.getVersionPreviewUrl,
+    { versionId: versionId as any }
+  );
+  return result?.url ?? null;
+}
 
 // Create a new submission
 export const create = mutation({
@@ -44,11 +58,7 @@ export const get = query({
     const submission = await ctx.db.get(args.id);
     if (!submission) return null;
 
-    // If there's a result, get the URL
-    let resultUrl: string | null = null;
-    if (submission.resultStorageId) {
-      resultUrl = await ctx.storage.getUrl(submission.resultStorageId);
-    }
+    const resultUrl = await getResultUrl(ctx, submission.resultVersionId);
 
     return {
       ...submission,
@@ -81,8 +91,8 @@ export const getActiveByScenario = query({
         };
       }
       // Also return completed submissions that have a result (user needs to Keep/Reject)
-      if (sub.status === "completed" && sub.resultStorageId) {
-        const resultUrl = await ctx.storage.getUrl(sub.resultStorageId);
+      if (sub.status === "completed" && sub.resultVersionId) {
+        const resultUrl = await getResultUrl(ctx, sub.resultVersionId);
         return {
           ...sub,
           resultUrl,
@@ -108,13 +118,9 @@ export const listByScenario = query({
       .order("desc")
       .collect();
 
-    // Add result URLs
     return Promise.all(
       submissions.map(async (sub) => {
-        let resultUrl: string | null = null;
-        if (sub.resultStorageId) {
-          resultUrl = await ctx.storage.getUrl(sub.resultStorageId);
-        }
+        const resultUrl = await getResultUrl(ctx, sub.resultVersionId);
         return { ...sub, resultUrl };
       }),
     );
@@ -134,13 +140,9 @@ export const listRecent = query({
       .order("desc")
       .take(limit);
 
-    // Add result URLs
     return Promise.all(
       submissions.map(async (sub) => {
-        let resultUrl: string | null = null;
-        if (sub.resultStorageId) {
-          resultUrl = await ctx.storage.getUrl(sub.resultStorageId);
-        }
+        const resultUrl = await getResultUrl(ctx, sub.resultVersionId);
         return { ...sub, resultUrl };
       }),
     );
@@ -163,11 +165,11 @@ export const updateProgress = internalMutation({
   },
 });
 
-// Internal mutation to mark as completed
-export const complete = internalMutation({
+// Internal mutation to mark as completed with versionId
+export const completeWithVersion = internalMutation({
   args: {
     id: v.id("comicSubmissions"),
-    resultStorageId: v.id("_storage"),
+    resultVersionId: v.string(),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.id, {
@@ -175,7 +177,7 @@ export const complete = internalMutation({
       progress: 100,
       progressMessage: "Generation complete",
       completedAt: Date.now(),
-      resultStorageId: args.resultStorageId,
+      resultVersionId: args.resultVersionId,
     });
   },
 });

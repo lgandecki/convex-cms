@@ -7,7 +7,6 @@ import { SpeakerGrille } from "./components/SpeakerGrille";
 import { PlayerControls } from "./components/PlayerControls";
 import { TrackDisplay } from "./components/TrackDisplay";
 import brushedMetal from "./Dark_brushed_metal_texture_62ba33e7.png";
-import { getVersionUrl } from "@/assetUrl";
 
 interface Chapter {
   id: number;
@@ -129,7 +128,7 @@ interface AudioFile {
   basename: string;
   version: number;
   versionId: string;
-  storageId: string;
+  storageId?: string;
   url: string;
   contentType?: string;
   size?: number;
@@ -224,10 +223,7 @@ export default function Odyssey({ initialOdysseyMusicFiles }: OdysseyProps) {
           }
           filesBySubChapter[subChapterId].push({
             basename: file.basename,
-            url: getVersionUrl({
-              versionId: file.versionId,
-              basename: file.basename,
-            }),
+            url: file.url, // Direct CDN URL from query
           });
         }
       }
