@@ -128,7 +128,7 @@ interface AudioFile {
   basename: string;
   version: number;
   versionId: string;
-  storageId: string;
+  storageId?: string;
   url: string;
   contentType?: string;
   size?: number;
