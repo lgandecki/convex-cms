@@ -35,18 +35,28 @@ export const startUpload = mutation({
 // Unauthenticated version of finishUpload for import
 export const finishUpload = mutation({
   args: {
-    intentId: v.string(),
-    storageId: v.optional(v.id("_storage")),
+    intentId: v.id("uploadIntents"),
+    uploadResponse: v.optional(v.any()),
+    r2Config: v.optional(
+      v.object({
+        R2_BUCKET: v.string(),
+        R2_ENDPOINT: v.string(),
+        R2_ACCESS_KEY_ID: v.string(),
+        R2_SECRET_ACCESS_KEY: v.string(),
+      })
+    ),
+    size: v.optional(v.number()),
+    contentType: v.optional(v.string()),
   },
   returns: v.object({
-    assetId: v.string(),
-    versionId: v.string(),
+    assetId: v.id("assets"),
+    versionId: v.id("assetVersions"),
     version: v.number(),
   }),
   handler: async (ctx, args) => {
     return await ctx.runMutation(
       components.assetManager.assetManager.finishUpload,
-      { ...args, intentId: args.intentId as any }
+      args
     );
   },
 });
