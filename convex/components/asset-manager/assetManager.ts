@@ -1,12 +1,76 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, QueryCtx, MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { slugify } from "./slugify";
 import { allocateFolderSegment } from "./allocateFolderSegment";
 import { getActorFields } from "./authAdapter";
 import { Id } from "./_generated/dataModel";
 import { folderFields, assetFields } from "./validators";
+import { storageBackendValidator } from "./schema";
+import { createR2Client, type R2Config } from "./r2Client";
+
+// Validator for R2 config passed from app layer
+const r2ConfigValidator = v.object({
+  R2_BUCKET: v.string(),
+  R2_ENDPOINT: v.string(),
+  R2_ACCESS_KEY_ID: v.string(),
+  R2_SECRET_ACCESS_KEY: v.string(),
+});
 
 const ROOT_PARENT = "" as const;
+
+// Default upload URL expiration: 1 hour
+const UPLOAD_INTENT_EXPIRY_MS = 60 * 60 * 1000;
+
+interface StorageConfig {
+  backend: "convex" | "r2";
+  r2PublicUrl?: string;
+}
+
+/**
+ * Get the current storage backend configuration.
+ * Defaults to "convex" if no configuration exists.
+ */
+async function getStorageBackend(
+  ctx: QueryCtx | MutationCtx,
+): Promise<"convex" | "r2"> {
+  const config = await getStorageConfig(ctx);
+  return config.backend;
+}
+
+/**
+ * Get the full storage configuration including R2 public URL.
+ */
+async function getStorageConfig(
+  ctx: QueryCtx | MutationCtx,
+): Promise<StorageConfig> {
+  const config = await ctx.db
+    .query("storageConfig")
+    .withIndex("by_singleton", (q) => q.eq("singleton", "storageConfig"))
+    .first();
+  return {
+    backend: config?.backend ?? "convex",
+    r2PublicUrl: config?.r2PublicUrl,
+  };
+}
+
+/**
+ * Get the public URL for an R2 key.
+ * Uses the configured r2PublicUrl from storageConfig.
+ * Requires r2PublicUrl to be configured - no fallback to signed URLs.
+ */
+async function getR2PublicUrl(
+  ctx: QueryCtx | MutationCtx,
+  r2Key: string,
+): Promise<string | null> {
+  const config = await getStorageConfig(ctx);
+  if (!config.r2PublicUrl) {
+    console.error("R2 public URL not configured. Call configureStorageBackend with r2PublicUrl.");
+    return null;
+  }
+  // Remove trailing slash if present, then append key
+  const baseUrl = config.r2PublicUrl.replace(/\/+$/, "");
+  return `${baseUrl}/${r2Key}`;
+}
 
 function normalizeFolderPath(raw: string): string {
   const trimmed = raw.trim();
@@ -17,6 +81,323 @@ function normalizeFolderPath(raw: string): string {
   // You can add more validation here if you like (no `..`, etc.)
   return withoutSlashes;
 }
+
+// =============================================================================
+// Storage Backend Configuration
+// =============================================================================
+
+/**
+ * Configure which storage backend to use for new uploads.
+ * Call once to switch from Convex storage to R2 (or back).
+ *
+ * For R2, you must provide r2PublicUrl - the public URL base for serving files
+ * (e.g., "https://assets.yourdomain.com"). This requires setting up a custom
+ * domain on your R2 bucket in Cloudflare.
+ */
+export const configureStorageBackend = mutation({
+  args: {
+    backend: storageBackendValidator,
+    // Required when backend is "r2" - the public URL base for serving files
+    r2PublicUrl: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // Validate R2 config
+    if (args.backend === "r2" && !args.r2PublicUrl) {
+      throw new Error(
+        "r2PublicUrl is required when using R2 backend. " +
+          "Set up a custom domain on your R2 bucket and provide the URL."
+      );
+    }
+
+    const existing = await ctx.db
+      .query("storageConfig")
+      .withIndex("by_singleton", (q) => q.eq("singleton", "storageConfig"))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        backend: args.backend,
+        r2PublicUrl: args.r2PublicUrl,
+      });
+    } else {
+      await ctx.db.insert("storageConfig", {
+        singleton: "storageConfig",
+        backend: args.backend,
+        r2PublicUrl: args.r2PublicUrl,
+      });
+    }
+    return null;
+  },
+});
+
+/**
+ * Get the current storage backend configuration.
+ */
+export const getStorageBackendConfig = query({
+  args: {},
+  returns: storageBackendValidator,
+  handler: async (ctx) => {
+    return await getStorageBackend(ctx);
+  },
+});
+
+// =============================================================================
+// Intent-based Upload Flow
+// =============================================================================
+
+/**
+ * Start an upload. Creates an upload intent and returns the upload URL.
+ * This replaces the old generateUploadUrl + commitUpload pattern.
+ *
+ * Flow:
+ * 1. Call startUpload() to get intentId + uploadUrl
+ * 2. Upload file to the URL
+ * 3. Call finishUpload() with intentId (+ storageId for Convex backend)
+ */
+export const startUpload = mutation({
+  args: {
+    folderPath: v.string(),
+    basename: v.string(),
+    filename: v.optional(v.string()), // Original filename with extension for URLs
+    publish: v.optional(v.boolean()),
+    label: v.optional(v.string()),
+    extra: v.optional(v.any()),
+    // R2 config passed from app layer (components can't access env vars)
+    r2Config: v.optional(r2ConfigValidator),
+  },
+  returns: v.object({
+    intentId: v.id("uploadIntents"),
+    backend: storageBackendValidator,
+    uploadUrl: v.string(),
+    r2Key: v.optional(v.string()),
+  }),
+  handler: async (ctx, args) => {
+    const folderPath = normalizeFolderPath(args.folderPath);
+    if (args.basename.includes("/")) {
+      throw new Error("basename must not contain '/'");
+    }
+
+    const now = Date.now();
+    const actorFields = await getActorFields(ctx);
+    const backend = await getStorageBackend(ctx);
+
+    // Create upload intent first (we need the ID for R2 key)
+    const intentId = await ctx.db.insert("uploadIntents", {
+      folderPath,
+      basename: args.basename,
+      filename: args.filename,
+      backend,
+      r2Key: undefined, // Will be set below for R2
+      status: "created",
+      publish: args.publish,
+      label: args.label,
+      extra: args.extra,
+      createdAt: now,
+      expiresAt: now + UPLOAD_INTENT_EXPIRY_MS,
+      createdBy: actorFields.createdBy,
+    });
+
+    let uploadUrl: string;
+    let r2Key: string | undefined;
+
+    if (backend === "r2") {
+      if (!args.r2Config) {
+        throw new Error("r2Config is required when using R2 backend");
+      }
+      // Use intentId for readable R2 key: {intentId}/{filename}
+      const filename = args.filename ?? args.basename;
+      r2Key = `${intentId}/${filename}`;
+
+      // Update intent with the r2Key
+      await ctx.db.patch(intentId, { r2Key });
+
+      const r2Client = createR2Client(args.r2Config);
+      const result = await r2Client.generateUploadUrl(r2Key);
+      uploadUrl = result.url;
+    } else {
+      // Use native Convex storage
+      uploadUrl = await ctx.storage.generateUploadUrl();
+    }
+
+    return {
+      intentId,
+      backend,
+      uploadUrl,
+      r2Key,
+    };
+  },
+});
+
+/**
+ * Finish an upload. Creates the asset version from a completed upload intent.
+ *
+ * For Convex backend: requires storageId from the upload response.
+ * For R2 backend: storageId is not needed (we use the r2Key from the intent).
+ */
+export const finishUpload = mutation({
+  args: {
+    intentId: v.id("uploadIntents"),
+    // The parsed JSON response from the upload. Backend extracts what it needs.
+    // For Convex: expects { storageId: "..." }
+    // For R2: ignored (r2Key is in the intent)
+    uploadResponse: v.optional(v.any()),
+    // R2 config passed from app layer (components can't access env vars)
+    r2Config: v.optional(r2ConfigValidator),
+    // Client-provided file metadata (required for R2 since we can't fetch from R2 in a mutation)
+    size: v.optional(v.number()),
+    contentType: v.optional(v.string()),
+  },
+  returns: v.object({
+    assetId: v.id("assets"),
+    versionId: v.id("assetVersions"),
+    version: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const intent = await ctx.db.get(args.intentId);
+    if (!intent) {
+      throw new Error("Upload intent not found");
+    }
+    if (intent.status !== "created") {
+      throw new Error(`Upload intent is ${intent.status}, expected created`);
+    }
+    if (intent.expiresAt < Date.now()) {
+      await ctx.db.patch(args.intentId, { status: "expired" });
+      throw new Error("Upload intent has expired");
+    }
+
+    const now = Date.now();
+    const actorFields = await getActorFields(ctx);
+    const publish = intent.publish ?? false;
+
+    // Get file metadata based on backend
+    let storageId: Id<"_storage"> | undefined;
+    let r2Key: string | undefined;
+    let size: number | undefined;
+    let contentType: string | undefined;
+    let sha256: string | undefined;
+
+    if (intent.backend === "r2") {
+      if (!intent.r2Key) {
+        throw new Error("R2 upload intent missing r2Key");
+      }
+      r2Key = intent.r2Key;
+
+      // Use client-provided metadata (can't fetch from R2 in a mutation)
+      size = args.size;
+      contentType = args.contentType;
+      // sha256 not available from client upload
+    } else {
+      // Convex backend - extract storageId from uploadResponse
+      const responseStorageId = args.uploadResponse?.storageId;
+      if (!responseStorageId) {
+        throw new Error(
+          "uploadResponse.storageId is required for Convex backend uploads"
+        );
+      }
+      storageId = responseStorageId as Id<"_storage">;
+
+      // Get metadata from Convex _storage
+      const fileDoc = await ctx.db.system.get(storageId);
+      if (!fileDoc) {
+        throw new Error("File metadata not found in _storage");
+      }
+      size = fileDoc.size;
+      contentType = fileDoc.contentType;
+      sha256 = fileDoc.sha256;
+    }
+
+    // Look up or create asset
+    let asset = await ctx.db
+      .query("assets")
+      .withIndex("by_folder_basename", (q) =>
+        q.eq("folderPath", intent.folderPath).eq("basename", intent.basename),
+      )
+      .first();
+
+    let assetId: Id<"assets">;
+    let nextVersion: number;
+
+    if (!asset) {
+      nextVersion = 1;
+      assetId = await ctx.db.insert("assets", {
+        folderPath: intent.folderPath,
+        basename: intent.basename,
+        extra: undefined,
+        versionCounter: nextVersion,
+        publishedVersionId: undefined,
+        draftVersionId: undefined,
+        createdAt: now,
+        updatedAt: now,
+        ...actorFields,
+      });
+      asset = await ctx.db.get(assetId);
+    } else {
+      nextVersion = (asset.versionCounter ?? 0) + 1;
+      await ctx.db.patch(asset._id, {
+        versionCounter: nextVersion,
+        updatedAt: now,
+        updatedBy: actorFields.updatedBy,
+      });
+      assetId = asset._id;
+    }
+
+    // Insert version
+    const versionId = await ctx.db.insert("assetVersions", {
+      assetId,
+      version: nextVersion,
+      state: publish ? "published" : "draft",
+      label: intent.label,
+      extra: intent.extra,
+      storageId,
+      r2Key,
+      originalFilename: intent.filename ?? intent.basename,
+      uploadStatus: "ready",
+      size,
+      contentType,
+      sha256,
+      createdAt: now,
+      createdBy: actorFields.createdBy,
+      publishedAt: publish ? now : undefined,
+      publishedBy: publish ? actorFields.updatedBy : undefined,
+      archivedAt: undefined,
+      archivedBy: undefined,
+    });
+
+    // Update asset pointers and archive old published if needed
+    if (publish) {
+      if (asset?.publishedVersionId) {
+        await ctx.db.patch(asset.publishedVersionId, {
+          state: "archived",
+          archivedAt: now,
+          archivedBy: actorFields.updatedBy,
+        });
+      }
+
+      await ctx.db.patch(assetId, {
+        publishedVersionId: versionId,
+        draftVersionId: undefined,
+        updatedAt: now,
+        updatedBy: actorFields.updatedBy,
+      });
+    } else {
+      await ctx.db.patch(assetId, {
+        draftVersionId: versionId,
+        updatedAt: now,
+        updatedBy: actorFields.updatedBy,
+      });
+    }
+
+    // Mark intent as finalized
+    await ctx.db.patch(args.intentId, { status: "finalized" });
+
+    return { assetId, versionId, version: nextVersion };
+  },
+});
+
+// =============================================================================
+// Folder Management
+// =============================================================================
 
 export const createFolderByPath = mutation({
   args: {
@@ -436,6 +817,125 @@ export const commitVersion = mutation({
   },
 });
 
+/**
+ * Create an asset version from an existing Convex storageId.
+ * Use this for migrations - copying files by reference without re-uploading.
+ *
+ * For new uploads, use startUpload + finishUpload instead.
+ */
+export const createVersionFromStorageId = mutation({
+  args: {
+    folderPath: v.string(),
+    basename: v.string(),
+    storageId: v.id("_storage"),
+    publish: v.optional(v.boolean()),
+    label: v.optional(v.string()),
+    extra: v.optional(v.any()),
+  },
+  returns: v.object({
+    assetId: v.id("assets"),
+    versionId: v.id("assetVersions"),
+    version: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    const folderPath = normalizeFolderPath(args.folderPath);
+    if (args.basename.includes("/")) {
+      throw new Error("basename must not contain '/'");
+    }
+
+    const now = Date.now();
+    const actorFields = await getActorFields(ctx);
+    const publish = args.publish ?? false;
+
+    // Get metadata from Convex _storage
+    const fileDoc = await ctx.db.system.get(args.storageId);
+    if (!fileDoc) {
+      throw new Error("File metadata not found in _storage");
+    }
+
+    // Look up or create asset
+    let asset = await ctx.db
+      .query("assets")
+      .withIndex("by_folder_basename", (q) =>
+        q.eq("folderPath", folderPath).eq("basename", args.basename),
+      )
+      .first();
+
+    let assetId: Id<"assets">;
+    let nextVersion: number;
+
+    if (!asset) {
+      nextVersion = 1;
+      assetId = await ctx.db.insert("assets", {
+        folderPath,
+        basename: args.basename,
+        extra: undefined,
+        versionCounter: nextVersion,
+        publishedVersionId: undefined,
+        draftVersionId: undefined,
+        createdAt: now,
+        updatedAt: now,
+        ...actorFields,
+      });
+      asset = await ctx.db.get(assetId);
+    } else {
+      nextVersion = (asset.versionCounter ?? 0) + 1;
+      await ctx.db.patch(asset._id, {
+        versionCounter: nextVersion,
+        updatedAt: now,
+        updatedBy: actorFields.updatedBy,
+      });
+      assetId = asset._id;
+    }
+
+    // Insert version
+    const versionId = await ctx.db.insert("assetVersions", {
+      assetId,
+      version: nextVersion,
+      state: publish ? "published" : "draft",
+      label: args.label,
+      extra: args.extra,
+      storageId: args.storageId,
+      r2Key: undefined,
+      size: fileDoc.size,
+      contentType: fileDoc.contentType,
+      sha256: fileDoc.sha256,
+      createdAt: now,
+      createdBy: actorFields.createdBy,
+      publishedAt: publish ? now : undefined,
+      publishedBy: publish ? actorFields.updatedBy : undefined,
+      archivedAt: undefined,
+      archivedBy: undefined,
+    });
+
+    // Update asset pointers and archive old published if needed
+    if (publish) {
+      if (asset?.publishedVersionId) {
+        await ctx.db.patch(asset.publishedVersionId, {
+          state: "archived",
+          archivedAt: now,
+          archivedBy: actorFields.updatedBy,
+        });
+      }
+
+      await ctx.db.patch(assetId, {
+        publishedVersionId: versionId,
+        draftVersionId: undefined,
+        updatedAt: now,
+        updatedBy: actorFields.updatedBy,
+      });
+    } else {
+      await ctx.db.patch(assetId, {
+        draftVersionId: versionId,
+        updatedAt: now,
+        updatedBy: actorFields.updatedBy,
+      });
+    }
+
+    return { assetId, versionId, version: nextVersion };
+  },
+});
+
 export const getAssetVersions = query({
   args: {
     folderPath: v.string(),
@@ -569,118 +1069,6 @@ export const getPublishedVersion = query({
   },
 });
 
-export const commitUpload = mutation({
-  args: {
-    folderPath: v.string(),
-    basename: v.string(),
-    storageId: v.id("_storage"),
-    publish: v.optional(v.boolean()),
-    label: v.optional(v.string()),
-    extra: v.optional(v.any()),
-  },
-  returns: v.object({
-    assetId: v.id("assets"),
-    versionId: v.id("assetVersions"),
-    version: v.number(),
-  }),
-  handler: async (ctx, args) => {
-    const folderPath = normalizeFolderPath(args.folderPath);
-    if (args.basename.includes("/")) {
-      throw new Error("basename must not contain '/'");
-    }
-
-    const now = Date.now();
-    const actorFields = await getActorFields(ctx);
-    const publish = args.publish ?? false;
-
-    // 1. Look up or create asset
-    let asset = await ctx.db
-      .query("assets")
-      .withIndex("by_folder_basename", (q) =>
-        q.eq("folderPath", folderPath).eq("basename", args.basename),
-      )
-      .first();
-
-    let assetId;
-    let nextVersion: number;
-
-    if (!asset) {
-      nextVersion = 1;
-      assetId = await ctx.db.insert("assets", {
-        folderPath,
-        basename: args.basename,
-        extra: undefined,
-        versionCounter: nextVersion,
-        publishedVersionId: undefined,
-        draftVersionId: undefined,
-        createdAt: now,
-        updatedAt: now,
-        ...actorFields,
-      });
-      asset = await ctx.db.get(assetId);
-    } else {
-      nextVersion = (asset.versionCounter ?? 0) + 1;
-      await ctx.db.patch(asset._id, {
-        versionCounter: nextVersion,
-        updatedAt: now,
-        updatedBy: actorFields.updatedBy,
-      });
-      assetId = asset._id;
-    }
-
-    // 2. Fetch file metadata from _storage
-    const fileDoc = await ctx.db.system.get(args.storageId);
-    if (!fileDoc) {
-      throw new Error("File metadata not found in _storage");
-    }
-
-    // 3. Insert version
-    const versionId = await ctx.db.insert("assetVersions", {
-      assetId,
-      version: nextVersion,
-      state: publish ? "published" : "draft",
-      label: args.label,
-      extra: args.extra,
-      storageId: args.storageId,
-      size: fileDoc.size,
-      contentType: fileDoc.contentType,
-      sha256: fileDoc.sha256,
-      createdAt: now,
-      createdBy: actorFields.createdBy,
-      publishedAt: publish ? now : undefined,
-      publishedBy: publish ? actorFields.updatedBy : undefined,
-      archivedAt: undefined,
-      archivedBy: undefined,
-    });
-
-    // 4. Update asset pointers and archive old published if needed
-    if (publish) {
-      if (asset?.publishedVersionId) {
-        await ctx.db.patch(asset.publishedVersionId, {
-          state: "archived",
-          archivedAt: now,
-          archivedBy: actorFields.updatedBy,
-        });
-      }
-
-      await ctx.db.patch(assetId, {
-        publishedVersionId: versionId,
-        draftVersionId: undefined,
-        updatedAt: now,
-        updatedBy: actorFields.updatedBy,
-      });
-    } else {
-      await ctx.db.patch(assetId, {
-        draftVersionId: versionId,
-        updatedAt: now,
-        updatedBy: actorFields.updatedBy,
-      });
-    }
-
-    return { assetId, versionId, version: nextVersion };
-  },
-});
-
 /**
  * Restore a previous version by creating a new version that references
  * the same storage file. This preserves full history:
@@ -706,7 +1094,7 @@ export const restoreVersion = mutation({
     if (!sourceVersion) {
       throw new Error("Version not found");
     }
-    if (!sourceVersion.storageId) {
+    if (!sourceVersion.storageId && !sourceVersion.r2Key) {
       throw new Error("Version has no associated file");
     }
 
@@ -728,6 +1116,7 @@ export const restoreVersion = mutation({
       label,
       extra: sourceVersion.extra,
       storageId: sourceVersion.storageId,
+      r2Key: sourceVersion.r2Key,
       size: sourceVersion.size,
       contentType: sourceVersion.contentType,
       sha256: sourceVersion.sha256,
@@ -778,7 +1167,8 @@ export const getPublishedFile = query({
       basename: v.string(),
       version: v.number(),
       state: v.literal("published"),
-      storageId: v.id("_storage"),
+      storageId: v.optional(v.id("_storage")),
+      r2Key: v.optional(v.string()),
       size: v.optional(v.number()),
       contentType: v.optional(v.string()),
       sha256: v.optional(v.string()),
@@ -802,11 +1192,22 @@ export const getPublishedFile = query({
     if (!asset || !asset.publishedVersionId) return null;
 
     const version = await ctx.db.get(asset.publishedVersionId);
-    if (!version || version.state !== "published" || !version.storageId) {
+    if (!version || version.state !== "published") {
       return null;
     }
 
-    const url = await ctx.storage.getUrl(version.storageId);
+    // Need either storageId (Convex) or r2Key (R2)
+    if (!version.storageId && !version.r2Key) {
+      return null;
+    }
+
+    // Get URL based on storage backend
+    let url: string | null = null;
+    if (version.r2Key) {
+      url = await getR2PublicUrl(ctx, version.r2Key);
+    } else if (version.storageId) {
+      url = await ctx.storage.getUrl(version.storageId);
+    }
     if (!url) return null;
 
     return {
@@ -815,6 +1216,7 @@ export const getPublishedFile = query({
       version: version.version,
       state: "published" as const,
       storageId: version.storageId,
+      r2Key: version.r2Key,
       size: version.size,
       contentType: version.contentType,
       sha256: version.sha256,
@@ -837,7 +1239,8 @@ export const listPublishedFilesInFolder = query({
       basename: v.string(),
       version: v.number(),
       versionId: v.id("assetVersions"),
-      storageId: v.id("_storage"),
+      storageId: v.optional(v.id("_storage")),
+      r2Key: v.optional(v.string()),
       url: v.string(),
       contentType: v.optional(v.string()),
       size: v.optional(v.number()),
@@ -857,10 +1260,22 @@ export const listPublishedFilesInFolder = query({
     for (const asset of assets) {
       if (!asset.publishedVersionId) continue;
       const version = await ctx.db.get(asset.publishedVersionId);
-      if (!version || version.state !== "published" || !version.storageId) {
+      if (!version || version.state !== "published") {
         continue;
       }
-      const url = await ctx.storage.getUrl(version.storageId);
+
+      // Need either storageId (Convex) or r2Key (R2)
+      if (!version.storageId && !version.r2Key) {
+        continue;
+      }
+
+      // Get URL based on storage backend
+      let url: string | null = null;
+      if (version.r2Key) {
+        url = await getR2PublicUrl(ctx, version.r2Key);
+      } else if (version.storageId) {
+        url = await ctx.storage.getUrl(version.storageId);
+      }
       if (!url) continue;
 
       results.push({
@@ -869,6 +1284,7 @@ export const listPublishedFilesInFolder = query({
         version: version.version,
         versionId: asset.publishedVersionId,
         storageId: version.storageId,
+        r2Key: version.r2Key,
         url,
         contentType: version.contentType,
         size: version.size,

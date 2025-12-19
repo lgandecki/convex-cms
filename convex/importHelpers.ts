@@ -6,20 +6,54 @@ import { v } from "convex/values";
 import { mutation } from "./_generated/server";
 import { components } from "./_generated/api";
 
-// Unauthenticated version of generateUploadUrl for import
-export const generateUploadUrl = mutation({
-  args: {},
-  returns: v.string(),
-  handler: async (ctx) => {
+const storageBackendValidator = v.union(v.literal("convex"), v.literal("r2"));
+
+// Unauthenticated version of startUpload for import
+// Returns intentId + uploadUrl for the new intent-based flow
+export const startUpload = mutation({
+  args: {
+    folderPath: v.string(),
+    basename: v.string(),
+    publish: v.optional(v.boolean()),
+    label: v.optional(v.string()),
+    extra: v.optional(v.any()),
+  },
+  returns: v.object({
+    intentId: v.string(),
+    backend: storageBackendValidator,
+    uploadUrl: v.string(),
+    r2Key: v.optional(v.string()),
+  }),
+  handler: async (ctx, args) => {
     return await ctx.runMutation(
-      components.assetManager.generateUploadUrl.generateUploadUrl,
-      {}
+      components.assetManager.assetManager.startUpload,
+      args
     );
   },
 });
 
-// Unauthenticated version of commitUpload for import
-export const commitUpload = mutation({
+// Unauthenticated version of finishUpload for import
+export const finishUpload = mutation({
+  args: {
+    intentId: v.string(),
+    storageId: v.optional(v.id("_storage")),
+  },
+  returns: v.object({
+    assetId: v.string(),
+    versionId: v.string(),
+    version: v.number(),
+  }),
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(
+      components.assetManager.assetManager.finishUpload,
+      { ...args, intentId: args.intentId as any }
+    );
+  },
+});
+
+// Unauthenticated version of createVersionFromStorageId for import
+// Use this for migrations - copying files by reference without re-uploading
+export const createVersionFromStorageId = mutation({
   args: {
     folderPath: v.string(),
     basename: v.string(),
@@ -35,7 +69,7 @@ export const commitUpload = mutation({
   }),
   handler: async (ctx, args) => {
     return await ctx.runMutation(
-      components.assetManager.assetManager.commitUpload,
+      components.assetManager.assetManager.createVersionFromStorageId,
       args
     );
   },

@@ -28,7 +28,7 @@ describe("getVersionPreviewUrl (admin preview - any version state)", () => {
       { size: 200, contentType: "image/png" },
     );
 
-    const v1 = await t.mutation(api.assetManager.commitUpload, {
+    const v1 = await t.mutation(api.assetManager.createVersionFromStorageId, {
       folderPath: "",
       basename: "preview-test.png",
       storageId: s1,
@@ -36,7 +36,7 @@ describe("getVersionPreviewUrl (admin preview - any version state)", () => {
     });
 
     // Publishing v2 archives v1
-    await t.mutation(api.assetManager.commitUpload, {
+    await t.mutation(api.assetManager.createVersionFromStorageId, {
       folderPath: "",
       basename: "preview-test.png",
       storageId: s2,
@@ -70,7 +70,7 @@ describe("getVersionPreviewUrl (admin preview - any version state)", () => {
       { size: 100, contentType: "application/json" },
     );
 
-    const { versionId } = await t.mutation(api.assetManager.commitUpload, {
+    const { versionId } = await t.mutation(api.assetManager.createVersionFromStorageId, {
       folderPath: "",
       basename: "draft-preview.json",
       storageId,
@@ -102,7 +102,7 @@ describe("getVersionPreviewUrl (admin preview - any version state)", () => {
       { size: 100, contentType: "text/plain" },
     );
 
-    const { versionId } = await t.mutation(api.assetManager.commitUpload, {
+    const { versionId } = await t.mutation(api.assetManager.createVersionFromStorageId, {
       folderPath: "",
       basename: "published-preview.txt",
       storageId,
@@ -147,7 +147,7 @@ describe("getVersionForServing (HTTP file serving logic)", () => {
         { size: 100, contentType: "text/plain" },
       );
 
-      const { versionId } = await t.mutation(api.assetManager.commitUpload, {
+      const { versionId } = await t.mutation(api.assetManager.createVersionFromStorageId, {
         folderPath: "drafts",
         basename: "secret.txt",
         storageId,
@@ -176,7 +176,7 @@ describe("getVersionForServing (HTTP file serving logic)", () => {
         { size: 200, contentType: "text/plain" },
       );
 
-      const v1 = await t.mutation(api.assetManager.commitUpload, {
+      const v1 = await t.mutation(api.assetManager.createVersionFromStorageId, {
         folderPath: "",
         basename: "doc.txt",
         storageId: s1,
@@ -184,7 +184,7 @@ describe("getVersionForServing (HTTP file serving logic)", () => {
       });
 
       // Publishing v2 archives v1
-      await t.mutation(api.assetManager.commitUpload, {
+      await t.mutation(api.assetManager.createVersionFromStorageId, {
         folderPath: "",
         basename: "doc.txt",
         storageId: s2,
@@ -208,7 +208,7 @@ describe("getVersionForServing (HTTP file serving logic)", () => {
         { size: 100, contentType: "application/json" },
       );
 
-      const { versionId } = await t.mutation(api.assetManager.commitUpload, {
+      const { versionId } = await t.mutation(api.assetManager.createVersionFromStorageId, {
         folderPath: "api",
         basename: "config.json",
         storageId,
@@ -251,7 +251,7 @@ describe("getVersionForServing (HTTP file serving logic)", () => {
         { size: 100, contentType: "image/png" },
       );
 
-      const { versionId } = await t.mutation(api.assetManager.commitUpload, {
+      const { versionId } = await t.mutation(api.assetManager.createVersionFromStorageId, {
         folderPath: "images",
         basename: "icon.png",
         storageId,
@@ -282,7 +282,7 @@ describe("getVersionForServing (HTTP file serving logic)", () => {
         { size: largeSize, contentType: "video/mp4" },
       );
 
-      const { versionId } = await t.mutation(api.assetManager.commitUpload, {
+      const { versionId } = await t.mutation(api.assetManager.createVersionFromStorageId, {
         folderPath: "videos",
         basename: "intro.mp4",
         storageId,
@@ -313,7 +313,7 @@ describe("getVersionForServing (HTTP file serving logic)", () => {
         { size: exactLimit, contentType: "application/zip" },
       );
 
-      const { versionId } = await t.mutation(api.assetManager.commitUpload, {
+      const { versionId } = await t.mutation(api.assetManager.createVersionFromStorageId, {
         folderPath: "archives",
         basename: "data.zip",
         storageId,
@@ -337,7 +337,7 @@ describe("getVersionForServing (HTTP file serving logic)", () => {
         { size: justOver, contentType: "application/zip" },
       );
 
-      const { versionId } = await t.mutation(api.assetManager.commitUpload, {
+      const { versionId } = await t.mutation(api.assetManager.createVersionFromStorageId, {
         folderPath: "archives",
         basename: "big-data.zip",
         storageId,
@@ -361,7 +361,7 @@ describe("getVersionForServing (HTTP file serving logic)", () => {
         { size: 500, contentType: "application/pdf" },
       );
 
-      const { versionId } = await t.mutation(api.assetManager.commitUpload, {
+      const { versionId } = await t.mutation(api.assetManager.createVersionFromStorageId, {
         folderPath: "docs",
         basename: "report.pdf",
         storageId,
@@ -387,7 +387,7 @@ describe("getVersionForServing (HTTP file serving logic)", () => {
         { size: 100 },
       );
 
-      const { versionId } = await t.mutation(api.assetManager.commitUpload, {
+      const { versionId } = await t.mutation(api.assetManager.createVersionFromStorageId, {
         folderPath: "misc",
         basename: "unknown.bin",
         storageId,

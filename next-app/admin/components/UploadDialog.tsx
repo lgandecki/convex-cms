@@ -39,10 +39,8 @@ export function UploadDialog({
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const generateUploadUrl = useMutation(
-    api.generateUploadUrl.generateUploadUrl
-  );
-  const commitUpload = useMutation(api.generateUploadUrl.commitUpload);
+  const startUpload = useMutation(api.generateUploadUrl.startUpload);
+  const finishUpload = useMutation(api.generateUploadUrl.finishUpload);
 
   const handleFileSelect = (selectedFile: File) => {
     setFile(selectedFile);
@@ -65,29 +63,46 @@ export function UploadDialog({
 
     setIsUploading(true);
     try {
-      // 1. Get upload URL
-      const uploadUrl = await generateUploadUrl();
-
-      // 2. Upload file
-      const res = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
-
-      if (!res.ok) {
-        throw new Error("Upload failed");
-      }
-
-      const { storageId } = await res.json();
-
-      // 3. Commit the upload
-      await commitUpload({
+      // 1. Start upload to get intentId, uploadUrl, and backend type
+      const { intentId, uploadUrl, backend } = await startUpload({
         folderPath,
         basename: finalBasename,
-        storageId,
         publish: publishImmediately,
         label: label.trim() || undefined,
+      });
+
+      // 2. Upload file - method differs by backend (R2 uses PUT, Convex uses POST)
+      let res: Response;
+      try {
+        res = await fetch(uploadUrl, {
+          method: backend === "r2" ? "PUT" : "POST",
+          headers: { "Content-Type": file.type },
+          body: file,
+        });
+      } catch (fetchError) {
+        // CORS errors show as generic "Failed to fetch" - make it clearer
+        console.error("Upload fetch failed:", fetchError);
+        throw new Error(
+          backend === "r2"
+            ? "Upload to R2 failed - check CORS configuration on your R2 bucket"
+            : "Upload failed - network error"
+        );
+      }
+
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => "");
+        throw new Error(`Upload failed: ${res.status} ${errorText}`);
+      }
+
+      // 3. Parse response - Convex returns JSON with storageId, R2 returns empty
+      const uploadResponse = backend === "convex" ? await res.json() : undefined;
+
+      // 4. Finish the upload with file metadata
+      await finishUpload({
+        intentId,
+        uploadResponse,
+        size: file.size,
+        contentType: file.type,
       });
 
       toast.success(

@@ -5,8 +5,8 @@ import schema from "./schema";
 import { api, internal } from "./_generated/api";
 import { modules } from "./test.setup";
 
-describe("file-backed asset versions (commitUpload + published URLs)", () => {
-  it("commitUpload creates first published file-backed version for a new asset", async () => {
+describe("file-backed asset versions (createVersionFromStorageId + published URLs)", () => {
+  it("createVersionFromStorageId creates first published file-backed version for a new asset", async () => {
     const t = convexTest(schema, modules);
 
     // Insert fake file metadata into _storage for testing
@@ -19,7 +19,7 @@ describe("file-backed asset versions (commitUpload + published URLs)", () => {
     );
 
     const { assetId, versionId, version } = await t.mutation(
-      api.assetManager.commitUpload,
+      api.assetManager.createVersionFromStorageId,
       {
         folderPath: "odyssey/ch1",
         basename: "01-intro.mp3",
@@ -82,7 +82,7 @@ describe("file-backed asset versions (commitUpload + published URLs)", () => {
     expect((publishedFile?.url ?? "").length).toBeGreaterThan(0);
   });
 
-  it("commitUpload with publish=false creates a draft version only", async () => {
+  it("createVersionFromStorageId with publish=false creates a draft version only", async () => {
     const t = convexTest(schema, modules);
 
     const storageId = await t.action(
@@ -90,7 +90,7 @@ describe("file-backed asset versions (commitUpload + published URLs)", () => {
       { size: 42, contentType: "text/plain" },
     );
 
-    const res = await t.mutation(api.assetManager.commitUpload, {
+    const res = await t.mutation(api.assetManager.createVersionFromStorageId, {
       folderPath: "drafts",
       basename: "note.txt",
       storageId,
@@ -139,7 +139,7 @@ describe("file-backed asset versions (commitUpload + published URLs)", () => {
       contentType: "image/png",
     });
 
-    const v1 = await t.mutation(api.assetManager.commitUpload, {
+    const v1 = await t.mutation(api.assetManager.createVersionFromStorageId, {
       folderPath: "",
       basename: "cover.png",
       storageId: s1,
@@ -147,7 +147,7 @@ describe("file-backed asset versions (commitUpload + published URLs)", () => {
       label: "v1",
     });
 
-    const v2 = await t.mutation(api.assetManager.commitUpload, {
+    const v2 = await t.mutation(api.assetManager.createVersionFromStorageId, {
       folderPath: "",
       basename: "cover.png",
       storageId: s2,
@@ -213,7 +213,7 @@ describe("file-backed asset versions (commitUpload + published URLs)", () => {
     });
 
     // root published
-    await t.mutation(api.assetManager.commitUpload, {
+    await t.mutation(api.assetManager.createVersionFromStorageId, {
       folderPath: "",
       basename: "root-a.txt",
       storageId: s1,
@@ -221,13 +221,13 @@ describe("file-backed asset versions (commitUpload + published URLs)", () => {
     });
 
     // backlog published + draft only
-    await t.mutation(api.assetManager.commitUpload, {
+    await t.mutation(api.assetManager.createVersionFromStorageId, {
       folderPath: "kanban/backlog",
       basename: "card-1.json",
       storageId: s2,
       publish: true,
     });
-    await t.mutation(api.assetManager.commitUpload, {
+    await t.mutation(api.assetManager.createVersionFromStorageId, {
       folderPath: "kanban/backlog",
       basename: "card-2.json",
       storageId: s3,

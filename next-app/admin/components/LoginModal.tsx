@@ -22,6 +22,7 @@ export function LoginModal({ open }: LoginModalProps) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,9 +30,9 @@ export function LoginModal({ open }: LoginModalProps) {
     setError("");
 
     try {
-      await signIn("password", { email, password, flow: "signIn" });
+      await signIn("password", { email, password, flow: isSignUp ? "signUp" : "signIn" });
     } catch {
-      setError("Invalid email or password");
+      setError(isSignUp ? "Could not create account" : "Invalid email or password");
     } finally {
       setLoading(false);
     }
@@ -45,7 +46,7 @@ export function LoginModal({ open }: LoginModalProps) {
         onEscapeKeyDown={(e) => e.preventDefault()}
       >
         <DialogHeader>
-          <DialogTitle>Admin Login</DialogTitle>
+          <DialogTitle>{isSignUp ? "Create Account" : "Admin Login"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
@@ -75,8 +76,21 @@ export function LoginModal({ open }: LoginModalProps) {
             />
           </div>
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Signing in..." : "Sign In"}
+            {loading ? (isSignUp ? "Creating account..." : "Signing in...") : (isSignUp ? "Sign Up" : "Sign In")}
           </Button>
+          <p className="text-sm text-center text-muted-foreground">
+            {isSignUp ? "Already have an account?" : "Don't have an account?"}{" "}
+            <button
+              type="button"
+              className="text-primary hover:underline"
+              onClick={() => {
+                setIsSignUp(!isSignUp);
+                setError("");
+              }}
+            >
+              {isSignUp ? "Sign In" : "Sign Up"}
+            </button>
+          </p>
         </form>
       </DialogContent>
     </Dialog>

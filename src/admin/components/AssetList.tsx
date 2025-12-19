@@ -18,7 +18,7 @@ import {
   Check,
   Clock,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, uploadFileToAssetManager } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -204,8 +204,8 @@ export function AssetList({
   const queryClient = useQueryClient();
 
   // Mutations
-  const generateUploadUrl = useMutation(api.generateUploadUrl.generateUploadUrl);
-  const commitUpload = useMutation(api.generateUploadUrl.commitUpload);
+  const startUpload = useMutation(api.generateUploadUrl.startUpload);
+  const finishUpload = useMutation(api.generateUploadUrl.finishUpload);
   const createFolderByPath = useMutation(api.cli.createFolderByPath);
   const renameAssetMutation = useMutation(api.cli.renameAsset);
 
@@ -217,20 +217,8 @@ export function AssetList({
       );
 
       try {
-        const uploadUrl = await generateUploadUrl();
-        const res = await fetch(uploadUrl, {
-          method: "POST",
-          headers: { "Content-Type": item.file.type },
-          body: item.file,
-        });
-
-        if (!res.ok) throw new Error("Upload failed");
-
-        const { storageId } = await res.json();
-        await commitUpload({
+        await uploadFileToAssetManager(item.file, startUpload, finishUpload, {
           folderPath: item.targetFolder,
-          basename: item.file.name,
-          storageId,
           publish: true,
         });
 
@@ -247,7 +235,7 @@ export function AssetList({
         );
       }
     },
-    [generateUploadUrl, commitUpload]
+    [startUpload, finishUpload]
   );
 
   // Process the upload queue with concurrency limit

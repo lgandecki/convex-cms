@@ -1236,55 +1236,43 @@ export const ensureStoryStripFolderInternal = internalMutation({
   },
 });
 
-// Auto-save first strip to asset manager (internal, called by generation)
-export const autoSaveFirstStrip = internalMutation({
+// Check if first strip already exists (and ensure folder exists)
+// Returns { saved: true } if strips exist (meaning this is a regeneration, not first strip)
+export const checkFirstStripExists = internalMutation({
   args: {
     storySlug: v.string(),
     scenarioName: v.string(),
-    storageId: v.id("_storage"),
   },
   handler: async (ctx, args) => {
-    const basePath = `comics/stories/${args.storySlug}/strips`;
-    const folderPath = `${basePath}/${args.scenarioName}`;
+    const folderPath = `comics/stories/${args.storySlug}/strips/${args.scenarioName}`;
 
-    // Check if any strips already exist for this scenario
+    // Check if folder exists
     const folder = await ctx.runQuery(
       components.assetManager.assetManager.getFolder,
       { path: folderPath },
     );
 
-    if (folder) {
-      const publishedFiles = await ctx.runQuery(
-        components.assetManager.assetManager.listPublishedFilesInFolder,
-        { folderPath },
+    // Create folder if it doesn't exist
+    if (!folder) {
+      await ctx.runMutation(
+        components.assetManager.assetManager.createFolderByPath,
+        { path: folderPath },
       );
-
-      const existingStrips = publishedFiles.filter((f) =>
-        /\.(png|jpg|jpeg|webp)$/i.test(f.basename),
-      );
-
-      // If strips already exist, don't auto-save (this is a regeneration)
-      if (existingStrips.length > 0) {
-        return { saved: false, reason: "strips_exist" };
-      }
+      // Folder just created, no strips can exist
+      return { saved: false };
     }
 
-    // Ensure folder exists and get basename
-    const { basename } = await ensureStoryStripFolderCore(ctx, {
-      storySlug: args.storySlug,
-      scenarioName: args.scenarioName,
-    });
+    // Check for existing published strips
+    const publishedFiles = await ctx.runQuery(
+      components.assetManager.assetManager.listPublishedFilesInFolder,
+      { folderPath },
+    );
 
-    // Commit the upload to asset manager
-    await ctx.runMutation(components.assetManager.assetManager.commitUpload, {
-      folderPath,
-      basename,
-      storageId: args.storageId,
-      publish: true,
-      label: `Auto-saved at ${new Date().toISOString()}`,
-    });
+    const existingStrips = publishedFiles.filter((f) =>
+      /\.(png|jpg|jpeg|webp)$/i.test(f.basename),
+    );
 
-    return { saved: true, folderPath, basename };
+    return { saved: existingStrips.length > 0 };
   },
 });
 
@@ -1387,7 +1375,7 @@ export const migrateToStories = mutation({
       }
     }
 
-    // 5. Migrate strips using commitUpload with same storageId (zero-copy)
+    // 5. Migrate strips using createVersionFromStorageId (zero-copy)
     const stripFolders = await ctx.runQuery(
       components.assetManager.assetManager.listFolders,
       { parentPath: "comics/strips" },
@@ -1413,7 +1401,7 @@ export const migrateToStories = mutation({
       for (const file of publishedFiles) {
         if (/\.(png|jpg|jpeg|webp)$/i.test(file.basename) && file.storageId) {
           await ctx.runMutation(
-            components.assetManager.assetManager.commitUpload,
+            components.assetManager.assetManager.createVersionFromStorageId,
             {
               folderPath: newStripPath,
               basename: file.basename,
@@ -1499,7 +1487,7 @@ export const migrateStripsToStory = mutation({
 
           if (!existingAsset) {
             await ctx.runMutation(
-              components.assetManager.assetManager.commitUpload,
+              components.assetManager.assetManager.createVersionFromStorageId,
               {
                 folderPath: newStripPath,
                 basename: file.basename,

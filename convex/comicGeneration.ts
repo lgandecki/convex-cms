@@ -2,7 +2,6 @@
 import { v } from "convex/values";
 import { mutation, internalAction } from "./_generated/server";
 import { internal, api } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
 import { storyContext } from "./prompts/storyContext";
 
 // Type definitions
@@ -278,63 +277,80 @@ export const generateComicStrip = internalAction({
         progressMessage: "Framing the artwork...",
       });
 
-      // Convert base64 to blob and upload to Convex storage
+      // Convert base64 to blob and upload to component storage
       const binaryData = Uint8Array.from(atob(imageData.data), (c) =>
         c.charCodeAt(0),
       );
       const blob = new Blob([binaryData], { type: imageData.mimeType });
 
-      // Get upload URL from asset manager and upload through its flow
-      const uploadUrl = await ctx.runMutation(
-        internal.generateUploadUrl.generateUploadUrlInternal,
-        {},
+      // Require story-scoped scenarios
+      if (!storyMatch) {
+        throw new Error(
+          "Only story-scoped scenarios are supported. Path must be: comics/stories/{storySlug}/scenarios/{name}.json",
+        );
+      }
+
+      const [, storySlug, scenarioName] = storyMatch;
+      const folderPath = `comics/stories/${storySlug}/strips/${scenarioName}`;
+      const basename = `${scenarioName}.png`;
+
+      // Check if strips already exist (if so, this is a regeneration, not first strip)
+      const { saved: stripsExist } = await ctx.runMutation(
+        internal.comics.checkFirstStripExists,
+        { storySlug, scenarioName },
+      );
+      const shouldAutoSave = !stripsExist;
+
+      // Start upload to get URL to component's storage
+      const { intentId, uploadUrl, backend } = await ctx.runMutation(
+        internal.generateUploadUrl.startUploadInternal,
+        {
+          folderPath,
+          basename,
+          publish: shouldAutoSave, // Auto-publish for first strips
+          label: shouldAutoSave
+            ? `Auto-saved at ${new Date().toISOString()}`
+            : undefined,
+        },
       );
 
-      const uploadResponse = await fetch(uploadUrl, {
-        method: "POST",
+      // R2 uses PUT, Convex uses POST
+      const uploadRes = await fetch(uploadUrl, {
+        method: backend === "r2" ? "PUT" : "POST",
         body: blob,
         headers: { "Content-Type": imageData.mimeType },
       });
 
-      if (!uploadResponse.ok) {
-        throw new Error(`Upload failed: ${uploadResponse.status}`);
+      if (!uploadRes.ok) {
+        throw new Error(`Upload failed: ${uploadRes.status}`);
       }
 
-      const { storageId } = (await uploadResponse.json()) as {
-        storageId: Id<"_storage">;
-      };
+      // Parse response - Convex returns JSON, R2 returns empty
+      const uploadResponse = backend === "convex" ? await uploadRes.json() : undefined;
 
-      // Mark submission as complete
-      await ctx.runMutation(internal.comicSubmissions.complete, {
+      // Finish the upload to create the asset version
+      const { versionId } = await ctx.runMutation(
+        internal.generateUploadUrl.finishUploadInternal,
+        {
+          intentId,
+          uploadResponse,
+          size: blob.size,
+          contentType: imageData.mimeType,
+        },
+      );
+
+      // Mark submission as complete with the versionId
+      await ctx.runMutation(internal.comicSubmissions.completeWithVersion, {
         id: submissionId,
-        resultStorageId: storageId,
+        resultVersionId: versionId,
       });
 
-      // Auto-save first strip to asset manager (for story-scoped scenarios)
-      if (storyMatch) {
-        const [, storySlug, scenarioName] = storyMatch;
-        try {
-          const result = await ctx.runMutation(
-            internal.comics.autoSaveFirstStrip,
-            {
-              storySlug,
-              scenarioName,
-              storageId,
-            },
-          );
-          if (result.saved) {
-            console.log(
-              `Auto-saved first strip for ${storySlug}/${scenarioName}`,
-            );
-            // Remove the submission so frontend doesn't show Keep/Retry buttons
-            await ctx.runMutation(internal.comicSubmissions.removeInternal, {
-              id: submissionId,
-            });
-          }
-        } catch (error) {
-          // Log but don't fail the generation if auto-save fails
-          console.error("Auto-save first strip failed:", error);
-        }
+      // For auto-saved first strips, remove the submission UI
+      if (shouldAutoSave) {
+        console.log(`Auto-saved first strip for ${storySlug}/${scenarioName}`);
+        await ctx.runMutation(internal.comicSubmissions.removeInternal, {
+          id: submissionId,
+        });
       }
     } catch (error) {
       console.error("Generation failed:", error);

@@ -1,44 +1,144 @@
 import { v } from "convex/values";
-import { mutation, internalMutation } from "./_generated/server";
+import { mutation, internalMutation, query } from "./_generated/server";
 import { components } from "./_generated/api";
 import { requireAuth } from "./authHelpers";
 
-export const generateUploadUrl = mutation({
-  args: {},
-  returns: v.string(),
-  handler: async (ctx) => {
+/**
+ * Get R2 config from env vars. Returns undefined if not configured.
+ * Called once per request, passed to component functions.
+ */
+function getR2Config() {
+  if (!process.env.R2_BUCKET) return undefined;
+  return {
+    R2_BUCKET: process.env.R2_BUCKET,
+    R2_ENDPOINT: process.env.R2_ENDPOINT!,
+    R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID!,
+    R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY!,
+  };
+}
+
+// =============================================================================
+// Storage Backend Configuration
+// =============================================================================
+
+const storageBackendValidator = v.union(v.literal("convex"), v.literal("r2"));
+
+/**
+ * Configure which storage backend to use for new uploads.
+ * Default is "convex". Call with "r2" to use Cloudflare R2.
+ *
+ * For R2, you must provide:
+ * - Env vars: R2_BUCKET, R2_TOKEN, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT
+ * - r2PublicUrl: The public URL for your R2 bucket (requires custom domain setup in Cloudflare)
+ */
+export const configureStorageBackend = mutation({
+  args: {
+    backend: storageBackendValidator,
+    // Required when backend is "r2" - the public URL for serving files
+    r2PublicUrl: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
     await requireAuth(ctx);
     return await ctx.runMutation(
-      components.assetManager.generateUploadUrl.generateUploadUrl,
-      {},
+      components.assetManager.assetManager.configureStorageBackend,
+      args,
     );
   },
 });
 
-// Internal version for scheduled actions (no auth required)
-export const generateUploadUrlInternal = internalMutation({
+/**
+ * Get the current storage backend configuration.
+ */
+export const getStorageBackendConfig = query({
   args: {},
-  returns: v.string(),
+  returns: storageBackendValidator,
   handler: async (ctx) => {
-    return await ctx.runMutation(
-      components.assetManager.generateUploadUrl.generateUploadUrl,
+    return await ctx.runQuery(
+      components.assetManager.assetManager.getStorageBackendConfig,
       {},
     );
   },
 });
 
-export const commitUpload = mutation({
+// =============================================================================
+// Upload Flow
+// =============================================================================
+
+/**
+ * Start an upload. Creates an upload intent and returns the upload URL.
+ *
+ * Flow:
+ * 1. Call startUpload() to get intentId + uploadUrl
+ * 2. Upload file to the URL
+ * 3. Call finishUpload() with intentId (+ storageId for Convex backend)
+ */
+export const startUpload = mutation({
   args: {
     folderPath: v.string(),
     basename: v.string(),
-    storageId: v.id("_storage"),
+    filename: v.optional(v.string()), // Original filename with extension for URLs
     publish: v.optional(v.boolean()),
     label: v.optional(v.string()),
     extra: v.optional(v.any()),
   },
   returns: v.object({
-    // These IDs are returned from the asset-manager *component* schema,
-    // so we type them as strings here to avoid referencing component-only tables.
+    intentId: v.string(),
+    backend: storageBackendValidator,
+    uploadUrl: v.string(),
+    r2Key: v.optional(v.string()),
+  }),
+  handler: async (ctx, args) => {
+    await requireAuth(ctx);
+    return await ctx.runMutation(
+      components.assetManager.assetManager.startUpload,
+      { ...args, r2Config: getR2Config() },
+    );
+  },
+});
+
+// Internal version for scheduled actions (no auth required)
+export const startUploadInternal = internalMutation({
+  args: {
+    folderPath: v.string(),
+    basename: v.string(),
+    filename: v.optional(v.string()), // Original filename with extension for URLs
+    publish: v.optional(v.boolean()),
+    label: v.optional(v.string()),
+    extra: v.optional(v.any()),
+  },
+  returns: v.object({
+    intentId: v.string(),
+    backend: storageBackendValidator,
+    uploadUrl: v.string(),
+    r2Key: v.optional(v.string()),
+  }),
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(
+      components.assetManager.assetManager.startUpload,
+      { ...args, r2Config: getR2Config() },
+    );
+  },
+});
+
+/**
+ * Finish an upload. Creates the asset version from a completed upload intent.
+ *
+ * Pass the raw JSON response from the upload POST. The backend extracts what
+ * it needs based on the storage backend (Convex or R2).
+ */
+export const finishUpload = mutation({
+  args: {
+    intentId: v.string(),
+    // The parsed JSON response from the upload POST request.
+    // For Convex: { storageId: "..." }
+    // For R2: can be empty (r2Key is in the intent)
+    uploadResponse: v.optional(v.any()),
+    // Client-provided file metadata (required for R2)
+    size: v.optional(v.number()),
+    contentType: v.optional(v.string()),
+  },
+  returns: v.object({
     assetId: v.string(),
     versionId: v.string(),
     version: v.number(),
@@ -46,21 +146,25 @@ export const commitUpload = mutation({
   handler: async (ctx, args) => {
     await requireAuth(ctx);
     return await ctx.runMutation(
-      components.assetManager.assetManager.commitUpload,
-      args,
+      components.assetManager.assetManager.finishUpload,
+      {
+        intentId: args.intentId as any,
+        uploadResponse: args.uploadResponse,
+        r2Config: getR2Config(),
+        size: args.size,
+        contentType: args.contentType,
+      },
     );
   },
 });
 
 // Internal version for scheduled actions (no auth required)
-export const commitUploadInternal = internalMutation({
+export const finishUploadInternal = internalMutation({
   args: {
-    folderPath: v.string(),
-    basename: v.string(),
-    storageId: v.id("_storage"),
-    publish: v.optional(v.boolean()),
-    label: v.optional(v.string()),
-    extra: v.optional(v.any()),
+    intentId: v.string(),
+    uploadResponse: v.optional(v.any()),
+    size: v.optional(v.number()),
+    contentType: v.optional(v.string()),
   },
   returns: v.object({
     assetId: v.string(),
@@ -69,8 +173,14 @@ export const commitUploadInternal = internalMutation({
   }),
   handler: async (ctx, args) => {
     return await ctx.runMutation(
-      components.assetManager.assetManager.commitUpload,
-      args,
+      components.assetManager.assetManager.finishUpload,
+      {
+        intentId: args.intentId as any,
+        uploadResponse: args.uploadResponse,
+        r2Config: getR2Config(),
+        size: args.size,
+        contentType: args.contentType,
+      },
     );
   },
 });

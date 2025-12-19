@@ -13,8 +13,8 @@ import type * as allocateFolderSegment from "../allocateFolderSegment.js";
 import type * as assetFsHttp from "../assetFsHttp.js";
 import type * as assetManager from "../assetManager.js";
 import type * as authAdapter from "../authAdapter.js";
-import type * as generateUploadUrl from "../generateUploadUrl.js";
 import type * as helpers_parseVersionIdFromPath from "../helpers/parseVersionIdFromPath.js";
+import type * as r2Client from "../r2Client.js";
 import type * as registerAssetFsRoutes from "../registerAssetFsRoutes.js";
 import type * as slugify from "../slugify.js";
 import type * as validators from "../validators.js";
@@ -32,8 +32,8 @@ const fullApi: ApiFromModules<{
   assetFsHttp: typeof assetFsHttp;
   assetManager: typeof assetManager;
   authAdapter: typeof authAdapter;
-  generateUploadUrl: typeof generateUploadUrl;
   "helpers/parseVersionIdFromPath": typeof helpers_parseVersionIdFromPath;
+  r2Client: typeof r2Client;
   registerAssetFsRoutes: typeof registerAssetFsRoutes;
   slugify: typeof slugify;
   validators: typeof validators;
@@ -65,4 +65,129 @@ export const internal: FilterApi<
   FunctionReference<any, "internal">
 > = anyApi as any;
 
-export const components = componentsGeneric() as unknown as {};
+export const components = componentsGeneric() as unknown as {
+  r2: {
+    lib: {
+      deleteMetadata: FunctionReference<
+        "mutation",
+        "internal",
+        { bucket: string; key: string },
+        null
+      >;
+      deleteObject: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          accessKeyId: string;
+          bucket: string;
+          endpoint: string;
+          key: string;
+          secretAccessKey: string;
+        },
+        null
+      >;
+      deleteR2Object: FunctionReference<
+        "action",
+        "internal",
+        {
+          accessKeyId: string;
+          bucket: string;
+          endpoint: string;
+          key: string;
+          secretAccessKey: string;
+        },
+        null
+      >;
+      getMetadata: FunctionReference<
+        "query",
+        "internal",
+        {
+          accessKeyId: string;
+          bucket: string;
+          endpoint: string;
+          key: string;
+          secretAccessKey: string;
+        },
+        {
+          bucket: string;
+          bucketLink: string;
+          contentType?: string;
+          key: string;
+          lastModified: string;
+          link: string;
+          sha256?: string;
+          size?: number;
+          url: string;
+        } | null
+      >;
+      listMetadata: FunctionReference<
+        "query",
+        "internal",
+        {
+          accessKeyId: string;
+          bucket: string;
+          cursor?: string;
+          endpoint: string;
+          limit?: number;
+          secretAccessKey: string;
+        },
+        {
+          continueCursor: string;
+          isDone: boolean;
+          page: Array<{
+            bucket: string;
+            bucketLink: string;
+            contentType?: string;
+            key: string;
+            lastModified: string;
+            link: string;
+            sha256?: string;
+            size?: number;
+            url: string;
+          }>;
+          pageStatus?: null | "SplitRecommended" | "SplitRequired";
+          splitCursor?: null | string;
+        }
+      >;
+      store: FunctionReference<
+        "action",
+        "internal",
+        {
+          accessKeyId: string;
+          bucket: string;
+          endpoint: string;
+          secretAccessKey: string;
+          url: string;
+        },
+        any
+      >;
+      syncMetadata: FunctionReference<
+        "action",
+        "internal",
+        {
+          accessKeyId: string;
+          bucket: string;
+          endpoint: string;
+          key: string;
+          onComplete?: string;
+          secretAccessKey: string;
+        },
+        null
+      >;
+      upsertMetadata: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          bucket: string;
+          contentType?: string;
+          key: string;
+          lastModified: string;
+          link: string;
+          sha256?: string;
+          size?: number;
+        },
+        { isNew: boolean }
+      >;
+    };
+  };
+};

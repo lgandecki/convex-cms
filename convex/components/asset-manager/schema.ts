@@ -1,7 +1,54 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+export const storageBackendValidator = v.union(
+  v.literal("convex"),
+  v.literal("r2"),
+);
+
 const schema = defineSchema({
+  /**
+   * Storage backend configuration singleton.
+   * Default (no row) = "convex" storage.
+   */
+  storageConfig: defineTable({
+    singleton: v.literal("storageConfig"),
+    backend: storageBackendValidator,
+    // For R2: the public URL base for serving files (e.g., "https://assets.yourdomain.com")
+    r2PublicUrl: v.optional(v.string()),
+  }).index("by_singleton", ["singleton"]),
+
+  /**
+   * Upload intents track in-progress uploads.
+   * Created by startUpload, finalized by finishUpload.
+   */
+  uploadIntents: defineTable({
+    folderPath: v.string(),
+    basename: v.string(),
+    filename: v.optional(v.string()), // Original filename with extension for URLs
+    backend: storageBackendValidator,
+
+    // For R2: key is pre-generated before upload
+    r2Key: v.optional(v.string()),
+
+    status: v.union(
+      v.literal("created"), // Intent created, waiting for upload
+      v.literal("finalized"), // Version created successfully
+      v.literal("expired"), // Timed out without completion
+    ),
+
+    // Options for version creation
+    publish: v.optional(v.boolean()),
+    label: v.optional(v.string()),
+    extra: v.optional(v.any()),
+
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    createdBy: v.optional(v.string()),
+  })
+    .index("by_r2_key", ["r2Key"])
+    .index("by_status_expires", ["status", "expiresAt"]),
+
   folders: defineTable({
     path: v.string(),
     name: v.string(),
@@ -35,8 +82,13 @@ const schema = defineSchema({
     label: v.optional(v.string()),
     extra: v.optional(v.any()),
 
-    // NEW: file storage metadata
+    // File storage metadata - one of storageId (Convex) or r2Key (R2) will be set
     storageId: v.optional(v.id("_storage")),
+    r2Key: v.optional(v.string()),
+    originalFilename: v.optional(v.string()),
+    uploadStatus: v.optional(
+      v.union(v.literal("pending"), v.literal("ready")),
+    ),
     size: v.optional(v.number()),
     contentType: v.optional(v.string()),
     sha256: v.optional(v.string()),

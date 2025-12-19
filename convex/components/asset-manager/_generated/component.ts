@@ -54,20 +54,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       >;
     };
     assetManager: {
-      commitUpload: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          basename: string;
-          extra?: any;
-          folderPath: string;
-          label?: string;
-          publish?: boolean;
-          storageId: string;
-        },
-        { assetId: string; version: number; versionId: string },
-        Name
-      >;
       commitVersion: FunctionReference<
         "mutation",
         "internal",
@@ -79,6 +65,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           publish?: boolean;
         },
         { assetId: string; version: number; versionId: string },
+        Name
+      >;
+      configureStorageBackend: FunctionReference<
+        "mutation",
+        "internal",
+        { backend: "convex" | "r2"; r2PublicUrl?: string },
+        null,
         Name
       >;
       createAsset: FunctionReference<
@@ -100,6 +93,38 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         { extra?: any; name?: string; path: string },
         string,
+        Name
+      >;
+      createVersionFromStorageId: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          basename: string;
+          extra?: any;
+          folderPath: string;
+          label?: string;
+          publish?: boolean;
+          storageId: string;
+        },
+        { assetId: string; version: number; versionId: string },
+        Name
+      >;
+      finishUpload: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          contentType?: string;
+          intentId: string;
+          r2Config?: {
+            R2_ACCESS_KEY_ID: string;
+            R2_BUCKET: string;
+            R2_ENDPOINT: string;
+            R2_SECRET_ACCESS_KEY: string;
+          };
+          size?: number;
+          uploadResponse?: any;
+        },
+        { assetId: string; version: number; versionId: string },
         Name
       >;
       getAsset: FunctionReference<
@@ -191,10 +216,11 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           folderPath: string;
           publishedAt: number;
           publishedBy?: string;
+          r2Key?: string;
           sha256?: string;
           size?: number;
           state: "published";
-          storageId: string;
+          storageId?: string;
           url: string;
           version: number;
         },
@@ -205,6 +231,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         { basename: string; folderPath: string },
         any,
+        Name
+      >;
+      getStorageBackendConfig: FunctionReference<
+        "query",
+        "internal",
+        {},
+        "convex" | "r2",
         Name
       >;
       listAssetEvents: FunctionReference<
@@ -285,8 +318,9 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           contentType?: string;
           folderPath: string;
           publishedAt?: number;
+          r2Key?: string;
           size?: number;
-          storageId: string;
+          storageId?: string;
           url: string;
           version: number;
           versionId: string;
@@ -326,20 +360,36 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         },
         Name
       >;
+      startUpload: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          basename: string;
+          extra?: any;
+          filename?: string;
+          folderPath: string;
+          label?: string;
+          publish?: boolean;
+          r2Config?: {
+            R2_ACCESS_KEY_ID: string;
+            R2_BUCKET: string;
+            R2_ENDPOINT: string;
+            R2_SECRET_ACCESS_KEY: string;
+          };
+        },
+        {
+          backend: "convex" | "r2";
+          intentId: string;
+          r2Key?: string;
+          uploadUrl: string;
+        },
+        Name
+      >;
       updateFolder: FunctionReference<
         "mutation",
         "internal",
         { name?: string; newPath?: string; path: string },
         any,
-        Name
-      >;
-    };
-    generateUploadUrl: {
-      generateUploadUrl: FunctionReference<
-        "mutation",
-        "internal",
-        {},
-        string,
         Name
       >;
     };

@@ -2,21 +2,24 @@ import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 
 export function UploadAssetForm({ folderPath }: { folderPath: string }) {
-  const generateUploadUrl = useMutation(
-    api.generateUploadUrl.generateUploadUrl,
-  );
-  const commitUpload = useMutation(api.generateUploadUrl.commitUpload);
+  const startUpload = useMutation(api.generateUploadUrl.startUpload);
+  const finishUpload = useMutation(api.generateUploadUrl.finishUpload);
 
   async function onChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // 1) Get upload URL from Convex
-    const uploadUrl = await generateUploadUrl();
+    // 1) Start upload to get intentId, uploadUrl, and backend type
+    const { intentId, uploadUrl, backend } = await startUpload({
+      folderPath,
+      basename: file.name,
+      publish: true,
+      label: "Uploaded from admin panel",
+    });
 
-    // 2) POST the file to that URL
+    // 2) Upload file - method differs by backend (R2 uses PUT, Convex uses POST)
     const res = await fetch(uploadUrl, {
-      method: "POST",
+      method: backend === "r2" ? "PUT" : "POST",
       headers: { "Content-Type": file.type },
       body: file,
     });
@@ -26,19 +29,18 @@ export function UploadAssetForm({ folderPath }: { folderPath: string }) {
       return;
     }
 
-    const { storageId } = await res.json();
+    // 3) Parse response - Convex returns JSON with storageId, R2 returns empty
+    const uploadResponse = backend === "convex" ? await res.json() : undefined;
 
-    // 3) Tell your asset manager about this upload
-    await commitUpload({
-      folderPath,
-      basename: file.name, // or ask user for nicer basename
-      storageId,
-      publish: true, // or false for draft-only
-      label: "Uploaded from admin panel",
+    // 4) Finish the upload with file metadata
+    await finishUpload({
+      intentId,
+      uploadResponse,
+      size: file.size,
+      contentType: file.type,
     });
 
-    // 4) Refresh whatever query lists assets in this folder
-    // (Convex hooks will re-run automatically if you’re using useQuery)
+    // 5) Convex hooks will re-run automatically
   }
 
   return (

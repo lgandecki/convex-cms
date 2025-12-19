@@ -4,10 +4,30 @@ import {
   internalAction,
   internalQuery,
   query,
+  QueryCtx,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
+
+/**
+ * Get the R2 public URL from storage config.
+ * Requires r2PublicUrl to be configured (no fallback to signed URLs).
+ */
+async function getR2PublicUrl(ctx: QueryCtx, r2Key: string): Promise<string | null> {
+  const config = await ctx.db
+    .query("storageConfig")
+    .withIndex("by_singleton", (q) => q.eq("singleton", "storageConfig"))
+    .first();
+
+  if (!config?.r2PublicUrl) {
+    console.error("R2 public URL not configured. Call configureStorageBackend with r2PublicUrl.");
+    return null;
+  }
+
+  const baseUrl = config.r2PublicUrl.replace(/\/+$/, "");
+  return `${baseUrl}/${r2Key}`;
+}
 
 /**
  * Internal action that fetches a blob from component storage.
@@ -50,9 +70,16 @@ export const getVersionPreviewUrl = query({
   handler: async (ctx, { versionId }) => {
     const version = await ctx.db.get(versionId);
     if (!version) return null;
-    if (!version.storageId) return null;
 
-    const url = await ctx.storage.getUrl(version.storageId);
+    // Need either storageId (Convex) or r2Key (R2)
+    if (!version.storageId && !version.r2Key) return null;
+
+    let url: string | null = null;
+    if (version.r2Key) {
+      url = await getR2PublicUrl(ctx, version.r2Key);
+    } else if (version.storageId) {
+      url = await ctx.storage.getUrl(version.storageId);
+    }
     if (!url) return null;
 
     return {
@@ -71,8 +98,9 @@ export const getVersionPreviewUrl = query({
  * The "published" concept is about which version is "current" at a path, not access control.
  *
  * Caching strategy:
- * - Small files (≤20MB): Served as blobs with immutable caching (1 year)
- * - Large files (>20MB): Served via redirect to storage URL with short caching (60s)
+ * - Convex storage, small files (≤20MB): Served as blobs with immutable caching (1 year)
+ * - Convex storage, large files (>20MB): Served via redirect to storage URL with short caching (60s)
+ * - R2 storage: Redirect to public URL with immutable caching (Cloudflare CDN handles caching)
  */
 export const getVersionForServing = query({
   args: {
@@ -95,13 +123,30 @@ export const getVersionForServing = query({
   handler: async (ctx, { versionId }) => {
     const version = await ctx.db.get(versionId);
     if (!version) return null;
-    if (!version.storageId) return null;
+
+    // Need either storageId (Convex) or r2Key (R2)
+    if (!version.storageId && !version.r2Key) return null;
 
     const size = version.size ?? 0;
     const mime = version.contentType ?? "application/octet-stream";
+
+    // R2 storage: redirect to public URL (Cloudflare CDN handles caching)
+    if (version.r2Key) {
+      const url = await getR2PublicUrl(ctx, version.r2Key);
+      if (!url) return null;
+
+      return {
+        kind: "redirect" as const,
+        location: url,
+        // R2 public URLs are stable, Cloudflare CDN caches at edge
+        cacheControl: "public, max-age=31536000, immutable",
+      };
+    }
+
+    // Convex storage
     const isSmall = size > 0 && size <= SMALL_FILE_LIMIT;
 
-    if (isSmall) {
+    if (isSmall && version.storageId) {
       return {
         kind: "blob" as const,
         storageId: version.storageId,
@@ -110,7 +155,7 @@ export const getVersionForServing = query({
       };
     }
 
-    const url = await ctx.storage.getUrl(version.storageId);
+    const url = await ctx.storage.getUrl(version.storageId!);
     if (!url) return null;
 
     return {

@@ -15,8 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Loader2, Upload, FileUp, X } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { formatBytes } from "@/lib/utils";
+import { cn, formatBytes, uploadFileToAssetManager } from "@/lib/utils";
 
 interface UploadDialogProps {
   open: boolean;
@@ -39,10 +38,8 @@ export function UploadDialog({
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const generateUploadUrl = useMutation(
-    api.generateUploadUrl.generateUploadUrl
-  );
-  const commitUpload = useMutation(api.generateUploadUrl.commitUpload);
+  const startUpload = useMutation(api.generateUploadUrl.startUpload);
+  const finishUpload = useMutation(api.generateUploadUrl.finishUpload);
 
   const handleFileSelect = (selectedFile: File) => {
     setFile(selectedFile);
@@ -65,27 +62,9 @@ export function UploadDialog({
 
     setIsUploading(true);
     try {
-      // 1. Get upload URL
-      const uploadUrl = await generateUploadUrl();
-
-      // 2. Upload file
-      const res = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
-
-      if (!res.ok) {
-        throw new Error("Upload failed");
-      }
-
-      const { storageId } = await res.json();
-
-      // 3. Commit the upload
-      await commitUpload({
+      await uploadFileToAssetManager(file, startUpload, finishUpload, {
         folderPath,
         basename: finalBasename,
-        storageId,
         publish: publishImmediately,
         label: label.trim() || undefined,
       });
