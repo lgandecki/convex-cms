@@ -70,7 +70,11 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       configureStorageBackend: FunctionReference<
         "mutation",
         "internal",
-        { backend: "convex" | "r2"; r2PublicUrl?: string },
+        {
+          backend: "convex" | "r2";
+          r2KeyPrefix?: string;
+          r2PublicUrl?: string;
+        },
         null,
         Name
       >;
@@ -390,6 +394,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         { name?: string; newPath?: string; path: string },
         any,
+        Name
+      >;
+    };
+    signedUrl: {
+      getSignedUrl: FunctionReference<
+        "action",
+        "internal",
+        {
+          expiresIn?: number;
+          r2Config?: {
+            R2_ACCESS_KEY_ID: string;
+            R2_BUCKET: string;
+            R2_ENDPOINT: string;
+            R2_SECRET_ACCESS_KEY: string;
+          };
+          versionId: string;
+        },
+        null | string,
         Name
       >;
     };

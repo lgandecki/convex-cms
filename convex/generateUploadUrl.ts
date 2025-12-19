@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, internalMutation, query } from "./_generated/server";
+import { mutation, internalMutation, query, action } from "./_generated/server";
 import { components } from "./_generated/api";
 import { requireAuth } from "./authHelpers";
 
@@ -30,12 +30,15 @@ const storageBackendValidator = v.union(v.literal("convex"), v.literal("r2"));
  * For R2, you must provide:
  * - Env vars: R2_BUCKET, R2_TOKEN, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT
  * - r2PublicUrl: The public URL for your R2 bucket (requires custom domain setup in Cloudflare)
+ * - r2KeyPrefix (optional): Prefix for R2 keys to avoid collisions when sharing a bucket
  */
 export const configureStorageBackend = mutation({
   args: {
     backend: storageBackendValidator,
     // Required when backend is "r2" - the public URL for serving files
     r2PublicUrl: v.optional(v.string()),
+    // Optional prefix for R2 keys when sharing a bucket across multiple apps
+    r2KeyPrefix: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -180,6 +183,38 @@ export const finishUploadInternal = internalMutation({
         r2Config: getR2Config(),
         size: args.size,
         contentType: args.contentType,
+      },
+    );
+  },
+});
+
+// =============================================================================
+// Signed URL Generation (for private file access)
+// =============================================================================
+
+/**
+ * Generate a signed URL for private file access.
+ * Works with both Convex storage and R2.
+ *
+ * NOTE: This does NOT check auth - that's your app's responsibility.
+ * Wrap this in your own action that checks permissions first.
+ *
+ * For audio/video files, use longer expiration (e.g., 3600 = 1 hour)
+ * to handle seeking and buffering during playback.
+ */
+export const getSignedUrl = action({
+  args: {
+    versionId: v.string(),
+    expiresIn: v.optional(v.number()), // seconds, default 300 (5 min)
+  },
+  returns: v.union(v.null(), v.string()),
+  handler: async (ctx, { versionId, expiresIn }) => {
+    return await ctx.runAction(
+      components.assetManager.signedUrl.getSignedUrl,
+      {
+        versionId: versionId as any,
+        expiresIn,
+        r2Config: getR2Config(),
       },
     );
   },

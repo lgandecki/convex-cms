@@ -16,6 +16,8 @@ const schema = defineSchema({
     backend: storageBackendValidator,
     // For R2: the public URL base for serving files (e.g., "https://assets.yourdomain.com")
     r2PublicUrl: v.optional(v.string()),
+    // For R2: optional prefix for keys to avoid collisions when sharing a bucket across apps
+    r2KeyPrefix: v.optional(v.string()),
   }).index("by_singleton", ["singleton"]),
 
   /**

@@ -14,8 +14,10 @@ import type * as assetFsHttp from "../assetFsHttp.js";
 import type * as assetManager from "../assetManager.js";
 import type * as authAdapter from "../authAdapter.js";
 import type * as helpers_parseVersionIdFromPath from "../helpers/parseVersionIdFromPath.js";
+import type * as internalQueries from "../internalQueries.js";
 import type * as r2Client from "../r2Client.js";
 import type * as registerAssetFsRoutes from "../registerAssetFsRoutes.js";
+import type * as signedUrl from "../signedUrl.js";
 import type * as slugify from "../slugify.js";
 import type * as validators from "../validators.js";
 
@@ -33,8 +35,10 @@ const fullApi: ApiFromModules<{
   assetManager: typeof assetManager;
   authAdapter: typeof authAdapter;
   "helpers/parseVersionIdFromPath": typeof helpers_parseVersionIdFromPath;
+  internalQueries: typeof internalQueries;
   r2Client: typeof r2Client;
   registerAssetFsRoutes: typeof registerAssetFsRoutes;
+  signedUrl: typeof signedUrl;
   slugify: typeof slugify;
   validators: typeof validators;
 }> = anyApi as any;

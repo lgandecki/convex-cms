@@ -180,6 +180,130 @@ type ServeVersionResult =
       cacheControl?: string;
     };
 
+/**
+ * Get the published version of an asset by path, ready for HTTP serving.
+ * This is the "one request" pattern - look up by path and get serving info in one call.
+ *
+ * Returns redirect info (to R2 CDN or Convex storage URL) or blob serving info.
+ * Returns null if no published version exists at the path.
+ *
+ * Usage in app's http.ts:
+ * ```typescript
+ * http.route({
+ *   path: "/file/*",
+ *   method: "GET",
+ *   handler: httpAction(async (ctx, request) => {
+ *     const pathParts = new URL(request.url).pathname.replace(/^\/file\//, '').split('/');
+ *     const basename = pathParts.pop()!;
+ *     const folderPath = pathParts.join('/');
+ *
+ *     const result = await ctx.runQuery(
+ *       components.assetManager.assetFsHttp.getPublishedFileForServing,
+ *       { folderPath, basename }
+ *     );
+ *     if (!result) return new Response("Not found", { status: 404 });
+ *
+ *     if (result.kind === "redirect") {
+ *       return new Response(null, {
+ *         status: 302,
+ *         headers: {
+ *           Location: result.location,
+ *           "Cache-Control": result.cacheControl ?? "public, max-age=60",
+ *         },
+ *       });
+ *     }
+ *
+ *     // For blob serving, call the action to get the blob
+ *     const blob = await ctx.runAction(
+ *       components.assetManager.assetFsHttp.getBlobForServing,
+ *       { storageId: result.storageId }
+ *     );
+ *     if (!blob) return new Response("Not found", { status: 404 });
+ *
+ *     return new Response(blob, {
+ *       headers: {
+ *         "Content-Type": result.contentType ?? "application/octet-stream",
+ *         "Cache-Control": result.cacheControl ?? "public, max-age=31536000, immutable",
+ *       },
+ *     });
+ *   }),
+ * });
+ * ```
+ */
+export const getPublishedFileForServing = query({
+  args: {
+    folderPath: v.string(),
+    basename: v.string(),
+  },
+  returns: v.union(
+    v.null(),
+    v.object({
+      kind: v.literal("blob"),
+      storageId: v.id("_storage"),
+      contentType: v.optional(v.string()),
+      cacheControl: v.optional(v.string()),
+    }),
+    v.object({
+      kind: v.literal("redirect"),
+      location: v.string(),
+      cacheControl: v.optional(v.string()),
+    }),
+  ),
+  handler: async (ctx, { folderPath, basename }) => {
+    // Look up the asset by path
+    const asset = await ctx.db
+      .query("assets")
+      .withIndex("by_folder_basename", (q) =>
+        q.eq("folderPath", folderPath).eq("basename", basename),
+      )
+      .first();
+
+    if (!asset || !asset.publishedVersionId) return null;
+
+    const version = await ctx.db.get(asset.publishedVersionId);
+    if (!version) return null;
+
+    // Need either storageId (Convex) or r2Key (R2)
+    if (!version.storageId && !version.r2Key) return null;
+
+    const size = version.size ?? 0;
+    const mime = version.contentType ?? "application/octet-stream";
+
+    // R2 storage: redirect to public URL (Cloudflare CDN handles caching)
+    if (version.r2Key) {
+      const url = await getR2PublicUrl(ctx, version.r2Key);
+      if (!url) return null;
+
+      return {
+        kind: "redirect" as const,
+        location: url,
+        cacheControl: "public, max-age=31536000, immutable",
+      };
+    }
+
+    // Convex storage
+    const isSmall = size > 0 && size <= SMALL_FILE_LIMIT;
+
+    if (isSmall && version.storageId) {
+      return {
+        kind: "blob" as const,
+        storageId: version.storageId,
+        contentType: mime,
+        cacheControl: "public, max-age=31536000, immutable",
+      };
+    }
+
+    const url = await ctx.storage.getUrl(version.storageId!);
+    if (!url) return null;
+
+    return {
+      kind: "redirect" as const,
+      location: url,
+      cacheControl: "public, max-age=60",
+    };
+  },
+});
+
 // export const httpServeVersion = internalAction({
 //   args: {
 //     versionId: v.id("assetVersions"),

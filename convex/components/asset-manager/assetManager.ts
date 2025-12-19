@@ -24,6 +24,24 @@ const UPLOAD_INTENT_EXPIRY_MS = 60 * 60 * 1000;
 interface StorageConfig {
   backend: "convex" | "r2";
   r2PublicUrl?: string;
+  r2KeyPrefix?: string;
+}
+
+// =============================================================================
+// Storage Type Helpers
+// =============================================================================
+
+interface StorageReference {
+  storageId?: Id<"_storage">;
+  r2Key?: string;
+}
+
+function isStoredOnConvex(ref: StorageReference): ref is StorageReference & { storageId: Id<"_storage"> } {
+  return ref.storageId !== undefined;
+}
+
+function isStoredOnR2(ref: StorageReference): ref is StorageReference & { r2Key: string } {
+  return ref.r2Key !== undefined;
 }
 
 /**
@@ -50,6 +68,7 @@ async function getStorageConfig(
   return {
     backend: config?.backend ?? "convex",
     r2PublicUrl: config?.r2PublicUrl,
+    r2KeyPrefix: config?.r2KeyPrefix,
   };
 }
 
@@ -93,12 +112,17 @@ function normalizeFolderPath(raw: string): string {
  * For R2, you must provide r2PublicUrl - the public URL base for serving files
  * (e.g., "https://assets.yourdomain.com"). This requires setting up a custom
  * domain on your R2 bucket in Cloudflare.
+ *
+ * Optionally provide r2KeyPrefix to namespace files when sharing a bucket
+ * across multiple apps (e.g., "my-app" results in keys like "my-app/abc123/file.mp3").
  */
 export const configureStorageBackend = mutation({
   args: {
     backend: storageBackendValidator,
     // Required when backend is "r2" - the public URL base for serving files
     r2PublicUrl: v.optional(v.string()),
+    // Optional prefix for R2 keys to avoid collisions when sharing a bucket
+    r2KeyPrefix: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -119,12 +143,14 @@ export const configureStorageBackend = mutation({
       await ctx.db.patch(existing._id, {
         backend: args.backend,
         r2PublicUrl: args.r2PublicUrl,
+        r2KeyPrefix: args.r2KeyPrefix,
       });
     } else {
       await ctx.db.insert("storageConfig", {
         singleton: "storageConfig",
         backend: args.backend,
         r2PublicUrl: args.r2PublicUrl,
+        r2KeyPrefix: args.r2KeyPrefix,
       });
     }
     return null;
@@ -180,7 +206,8 @@ export const startUpload = mutation({
 
     const now = Date.now();
     const actorFields = await getActorFields(ctx);
-    const backend = await getStorageBackend(ctx);
+    const storageConfig = await getStorageConfig(ctx);
+    const backend = storageConfig.backend;
 
     // Create upload intent first (we need the ID for R2 key)
     const intentId = await ctx.db.insert("uploadIntents", {
@@ -205,9 +232,10 @@ export const startUpload = mutation({
       if (!args.r2Config) {
         throw new Error("r2Config is required when using R2 backend");
       }
-      // Use intentId for readable R2 key: {intentId}/{filename}
+      // Build R2 key: {prefix/}{intentId}/{filename}
       const filename = args.filename ?? args.basename;
-      r2Key = `${intentId}/${filename}`;
+      const prefix = storageConfig.r2KeyPrefix ? `${storageConfig.r2KeyPrefix}/` : "";
+      r2Key = `${prefix}${intentId}/${filename}`;
 
       // Update intent with the r2Key
       await ctx.db.patch(intentId, { r2Key });
