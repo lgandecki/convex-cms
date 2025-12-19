@@ -1,4 +1,3 @@
-"use node";
 import { action } from "./_generated/server";
 import { anyApi } from "convex/server";
 import { v } from "convex/values";
@@ -30,11 +29,15 @@ interface StorageReference {
   r2Key?: string;
 }
 
-function isStoredOnConvex(ref: StorageReference): ref is StorageReference & { storageId: Id<"_storage"> } {
+function isStoredOnConvex(
+  ref: StorageReference,
+): ref is StorageReference & { storageId: Id<"_storage"> } {
   return ref.storageId !== undefined;
 }
 
-function isStoredOnR2(ref: StorageReference): ref is StorageReference & { r2Key: string } {
+function isStoredOnR2(
+  ref: StorageReference,
+): ref is StorageReference & { r2Key: string } {
   return ref.r2Key !== undefined;
 }
 
@@ -63,7 +66,10 @@ export const getSignedUrl = action({
   },
   returns: v.union(v.null(), v.string()),
   handler: async (ctx, { versionId, expiresIn = 300, r2Config }) => {
-    const version = await ctx.runQuery(internal.internalQueries.getVersionStorageInfo, { versionId });
+    const version = await ctx.runQuery(
+      internal.internalQueries.getVersionStorageInfo,
+      { versionId },
+    );
     if (!version) return null;
 
     if (isStoredOnConvex(version)) {

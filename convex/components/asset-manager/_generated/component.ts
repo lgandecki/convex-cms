@@ -31,6 +31,20 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         null | ArrayBuffer,
         Name
       >;
+      getPublishedFileForServing: FunctionReference<
+        "query",
+        "internal",
+        { basename: string; folderPath: string },
+        | null
+        | {
+            cacheControl?: string;
+            contentType?: string;
+            kind: "blob";
+            storageId: string;
+          }
+        | { cacheControl?: string; kind: "redirect"; location: string },
+        Name
+      >;
       getVersionForServing: FunctionReference<
         "query",
         "internal",
