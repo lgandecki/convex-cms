@@ -10,6 +10,7 @@
 
 import type * as auth from "../auth.js";
 import type * as authHelpers from "../authHelpers.js";
+import type * as bookQueries from "../bookQueries.js";
 import type * as cli from "../cli.js";
 import type * as comicGeneration from "../comicGeneration.js";
 import type * as comicSubmissions from "../comicSubmissions.js";
@@ -29,6 +30,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   authHelpers: typeof authHelpers;
+  bookQueries: typeof bookQueries;
   cli: typeof cli;
   comicGeneration: typeof comicGeneration;
   comicSubmissions: typeof comicSubmissions;
