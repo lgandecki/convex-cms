@@ -35,6 +35,7 @@ export const createFolderByName = mutation({
   args: {
     parentPath: v.string(),
     name: v.string(),
+    extra: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     await requireAuth(ctx);
@@ -49,6 +50,7 @@ export const createFolderByPath = mutation({
   args: {
     path: v.string(),
     name: v.optional(v.string()),
+    extra: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     await requireAuth(ctx);
