@@ -113,6 +113,7 @@ See [Private Files with Signed URLs](./private-files.md) for details.
 | [Setting Up R2](./setup-r2.md) | Configure Cloudflare R2 storage and CORS |
 | [Public Files](./public-files.md) | Serve files through CDN |
 | [Private Files](./private-files.md) | Auth-protected file access |
+| [Example Apps Plan](./example-apps-plan.md) | Roadmap for demo applications |
 
 ## Concepts
 
